@@ -1,0 +1,7 @@
+result/*
+logs/*
+result-*/*
+.idea
+__pycache__
+!.gitkeep
+Thumbs.db

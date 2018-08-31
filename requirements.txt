@@ -1,0 +1,6 @@
+keras==2.2.0
+numpy
+tensorflow-gpu==1.10.*
+Pillow
+git+https://github.com/keras-team/keras-contrib.git
+GitPython
