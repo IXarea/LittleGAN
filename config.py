@@ -13,11 +13,11 @@ parser.add_argument("--epoch", type=int, required=False, help="epoch times", def
 parser.add_argument("--plot", type=int, required=False, help="print the network info", default=0)
 parser.add_argument("--test", type=int, required=False, help="ignore git repo is dirty", default=0)
 parser.add_argument("--noise", type=int, required=False, help="noise dimension", default=100)
-parser.add_argument("--img_ext", type=str, required=False, help="image extension (with dot)", default=".jpg")
+parser.add_argument("--img_ext", type=str, required=False, help="image extension (with dot)", default=".png")
 parser.add_argument("--img_size", type=int, required=False, help="image size", default=128)
 parser.add_argument("--img_freq", type=int, required=False, help="image save frequency", default=100)
 parser.add_argument("--model_freq_batch", type=int, required=False, help="save model every n batches", default=500)
 parser.add_argument("--model_freq_epoch", type=int, required=False, help="model save with special name every n epoch",
-                    default=5)
+                    default=1)
 
 args = parser.parse_args()

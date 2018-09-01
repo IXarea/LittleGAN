@@ -8,7 +8,7 @@ from git import Repo
 from keras.layers import Input, Dense, Reshape, Conv2D, Flatten, Activation, LeakyReLU, Dropout, Conv2DTranspose
 from keras.layers.merge import Concatenate
 from keras.models import Model
-from keras.optimizers import Adam, SGD
+from keras.optimizers import Adam
 from keras.utils import Progbar
 from keras_contrib.layers import InstanceNormalization
 
@@ -41,7 +41,7 @@ class OurGAN:
 
     def _setup(self):
         self.g_opt = Adam(0.0002, 0.5)
-        self.g_l1_opt = SGD(0.0001, 0.5)
+        self.g_l1_opt = Adam(0.0001, 0.5)
         self.d_opt = Adam(0.0003, 0.5)
 
         self.max_conv = 256
@@ -138,7 +138,7 @@ class OurGAN:
         gan_loss_d = (gan_loss_1[0] + gan_loss_2[0]) / 2
         gan_loss_c = (gan_loss_1[1] + gan_loss_2[1]) / 2
 
-        if (gan_loss_d + gan_loss_c) / d_loss > 2:
+        if (gan_loss_d + gan_loss_c) / d_loss > 3:
             g_noise = np.random.normal(size=(batch_size, self.noise_dim))
             g_loss = self.generator.train_on_batch([g_noise, cond_true], img_true)
         else:
