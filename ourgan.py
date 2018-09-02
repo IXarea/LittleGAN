@@ -5,7 +5,7 @@ import keras
 import keras.backend as k
 import numpy as np
 from git import Repo
-from keras.layers import Input, Dense, Reshape, Conv2D, Flatten, Activation, LeakyReLU, Dropout, Conv2DTranspose
+from keras.layers import Add, Input, Dense, Reshape, Conv2D, Flatten, Activation, LeakyReLU, Dropout, Conv2DTranspose
 from keras.layers.merge import Concatenate
 from keras.models import Model
 from keras.optimizers import Adam
@@ -47,6 +47,7 @@ class OurGAN:
         self.max_conv = 256
         self.init_dim = 8
         self.kernel_size = 5
+        self.residual_kernel_size = 5
         self.conv_layers = int(math.log2(self.img_dim / self.init_dim))
 
         self.noise_input = Input(shape=(self.noise_dim,))
@@ -86,12 +87,23 @@ class OurGAN:
         x = Activation('relu')(x)
         # 128x128
         if self.img_dim >= 128:
+            x = OurGAN._residual_block(x, n_conv, self.residual_kernel_size)
             n_conv = int(n_conv / 2)
             x = Conv2DTranspose(n_conv, kernel_size=self.kernel_size, strides=2, padding='same')(x)
-            x = Activation('relu')(x)
+            x = InstanceNormalization()(x)
+            x = Activation("relu")(x)
 
         self.g_output = Conv2D(self.channels, kernel_size=self.kernel_size, padding='same', activation='tanh')(x)
         self.generator = Model(inputs=[self.noise_input, self.cond_input], outputs=[self.g_output], name=name)
+
+    @staticmethod
+    def _residual_block(layer, n_conv, kernel):
+        x = Conv2D(n_conv, kernel_size=kernel, strides=1, padding='same')(layer)
+        x = InstanceNormalization()(x)
+        x = Activation('relu')(x)
+        x = Conv2D(int(layer.shape[-1]), kernel_size=kernel, strides=1, padding='same')(x)
+        x = Add()([layer, x])
+        return x
 
     def _setup_d_q(self, d_name):
         n_conv = self.max_conv // 2 ** (self.conv_layers - 1)
