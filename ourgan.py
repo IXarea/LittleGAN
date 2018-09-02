@@ -44,7 +44,7 @@ class OurGAN:
         self.g_l1_opt = Adam(4e-5, 0.8)
         self.d_opt = Adam(2e-4, 0.8)
 
-        self.max_conv = 256
+        self.conv_filter = [512, 256, 128, 64]
         self.init_dim = 8
         self.kernel_size = 5
         self.residual_kernel_size = 5
@@ -53,48 +53,44 @@ class OurGAN:
         self.noise_input = Input(shape=(self.noise_dim,))
         self.cond_input = Input(shape=(self.cond_dim,))
         self.img_input = Input(shape=(self.img_dim, self.img_dim, self.channels,))
+        self.layers = {}
         self._setup_g_1("G")
-        self._setup_d_q("D")
+        self._setup_d("D")
         self._setup_gan("GAN")
-
+        self._setup_u_net()
         self.discriminator.compile(self.d_opt, 'binary_crossentropy', metrics=['accuracy'])
         self.generator.compile(self.g_l1_opt, 'mae')
         # self.q_net.compile(self.d_q_opt, self.mutual_info_loss, metrics=['accuracy'])
 
         self.discriminator.trainable = False
         self.gan.compile(self.g_opt, ['binary_crossentropy', "binary_crossentropy"])
+        print(self.layers)
 
     def _setup_g_1(self, name):
 
-        n_conv = self.max_conv
         # 8x8
         x = Concatenate()([self.noise_input, self.cond_input])
-        x = Dense(self.init_dim ** 2 * self.max_conv * 2, activation="relu")(x)  # 不可使用两次全连接
-        x = Reshape([self.init_dim, self.init_dim, self.max_conv * 2])(x)
+        x = Dense(self.init_dim ** 2 * self.conv_filter[0] * 2, activation="relu")(x)  # 不可使用两次全连接
+        x = Reshape([self.init_dim, self.init_dim, self.conv_filter[0] * 2])(x)
         x = InstanceNormalization()(x)
         # 16x16
-        x = Conv2DTranspose(n_conv, kernel_size=self.kernel_size, strides=2, padding='same')(x)
+        x = Conv2DTranspose(self.conv_filter[0], kernel_size=self.kernel_size, strides=2, padding='same')(x)
         x = InstanceNormalization()(x)
         x = Activation('relu')(x)
         # 32x32
-        n_conv = int(n_conv / 2)
-        x = Conv2DTranspose(n_conv, kernel_size=self.kernel_size, strides=2, padding='same')(x)
+        x = Conv2DTranspose(self.conv_filter[1], kernel_size=self.kernel_size, strides=2, padding='same')(x)
         x = InstanceNormalization()(x)
         x = Activation('relu')(x)
         # 64x64
-        if self.img_dim >= 64:
-            x = OurGAN._residual_block(x, n_conv, self.residual_kernel_size)
-            n_conv = int(n_conv / 2)
-            x = Conv2DTranspose(n_conv, kernel_size=self.kernel_size, strides=2, padding='same')(x)
-            x = InstanceNormalization()(x)
-            x = Activation('relu')(x)
+        x = OurGAN._residual_block(x, self.conv_filter[1], self.residual_kernel_size)
+        x = Conv2DTranspose(self.conv_filter[2], kernel_size=self.kernel_size, strides=2, padding='same')(x)
+        x = InstanceNormalization()(x)
+        x = Activation('relu')(x)
         # 128x128
-        if self.img_dim >= 128:
-            x = OurGAN._residual_block(x, n_conv, self.residual_kernel_size)
-            n_conv = int(n_conv / 2)
-            x = Conv2DTranspose(n_conv, kernel_size=self.kernel_size, strides=2, padding='same')(x)
-            x = InstanceNormalization()(x)
-            x = Activation("relu")(x)
+        x = OurGAN._residual_block(x, self.conv_filter[2], self.residual_kernel_size)
+        x = Conv2DTranspose(self.conv_filter[3], kernel_size=self.kernel_size, strides=2, padding='same')(x)
+        x = InstanceNormalization()(x)
+        x = Activation("relu")(x)
 
         self.g_output = Conv2D(self.channels, kernel_size=self.kernel_size, padding='same', activation='tanh')(x)
         self.generator = Model(inputs=[self.noise_input, self.cond_input], outputs=[self.g_output], name=name)
@@ -108,16 +104,19 @@ class OurGAN:
         x = Add()([layer, x])
         return x
 
-    def _setup_d_q(self, d_name):
-        n_conv = self.max_conv // 2 ** (self.conv_layers - 1)
+    def _setup_d(self, d_name):
+        conv_filter = self.conv_filter
+        conv_filter.reverse()
         x = self.img_input
-        for _ in range(1, 1 + self.conv_layers):
-            print("D Conv Filters:", n_conv)
-            x = Conv2D(n_conv, kernel_size=self.kernel_size, strides=2, padding='same')(x)
+        img_dim = self.img_dim
+        for i in range(0, self.conv_layers):
+            print("D Conv Filters:", conv_filter[i])
+            x = Conv2D(conv_filter[i], kernel_size=self.kernel_size, strides=2, padding='same')(x)
             x = InstanceNormalization()(x)
             x = LeakyReLU(alpha=0.2)(x)
             x = Dropout(0.25)(x)
-            n_conv = n_conv * 2
+            img_dim = img_dim // 2
+            self.layers["d_" + str(x.shape[1])] = x
 
         x = Flatten()(x)
         self.d_output = Dense(1, activation="sigmoid")(x)
@@ -128,6 +127,45 @@ class OurGAN:
 
         self.discriminator = Model(inputs=[self.img_input, self.cond_input], outputs=[self.d_output, self.d2_output],
                                    name=d_name)
+
+    def _setup_u_net(self):
+        self.conv_filter.reverse()
+        print(self.conv_filter)
+        x = self.layers["d_8"]
+        x = OurGAN._residual_block(x, self.conv_filter[0], self.residual_kernel_size)
+
+        c = Dense(8 ** 2)(self.cond_input)
+        c = Reshape([8, 8, 1])(c)
+        x = Concatenate()([x, c])
+        x = Conv2DTranspose(self.conv_filter[1], kernel_size=self.kernel_size, strides=2, padding='same')(x)
+        x = InstanceNormalization()(x)
+        x = Activation('relu')(x)
+
+        x = Add()([x, self.layers["d_16"]])
+        c = Dense(16 ** 2)(self.cond_input)
+        c = Reshape([16, 16, 1])(c)
+        x = Concatenate()([x, c])
+        x = Conv2DTranspose(self.conv_filter[2], kernel_size=self.kernel_size, strides=2, padding='same')(x)
+        x = InstanceNormalization()(x)
+        x = Activation('relu')(x)
+
+        x = Add()([x, self.layers["d_32"]])
+        c = Dense(32 ** 2)(self.cond_input)
+        c = Reshape([32, 32, 1])(c)
+        x = Concatenate()([x, c])
+        x = Conv2DTranspose(self.conv_filter[3], kernel_size=self.kernel_size, strides=2, padding='same')(x)
+        x = InstanceNormalization()(x)
+        x = Activation('relu')(x)
+
+        x = Add()([x, self.layers["d_64"]])
+        c = Dense(64 ** 2)(self.cond_input)
+        c = Reshape([64, 64, 1])(c)
+        x = Concatenate()([x, c])
+        x = Conv2DTranspose(3, kernel_size=self.kernel_size, strides=2, padding='same')(x)
+        x = InstanceNormalization()(x)
+        x = Activation('relu')(x)
+
+        self.u_net = Model([self.img_input, self.cond_input], x)
 
     def _setup_gan(self, name):
 
@@ -181,7 +219,7 @@ class OurGAN:
         return 0, gan_loss_d, gan_loss_c, d_loss, d_acc, img_true, img_fake
 
     def plot(self):
-        models = {"G": self.generator, "D": self.discriminator, "GAN": self.gan}
+        models = {"G": self.generator, "D": self.discriminator, "U-NET": self.u_net, "GAN": self.gan}
         with open(self.result_path + "/models.txt", "w") as f:
             def print_fn(content):
                 print(content + "\n", file=f)
@@ -242,9 +280,9 @@ class OurGAN:
             f.write("Generate Image Condition\r\n\r")
             if labels is not None:
                 print(labels, "\r\n", file=f)
-            id = 0
+            lid = 0
             for item in condition:
-                id += 1
-                print(id, item, file=f)
+                lid += 1
+                print(lid, item, file=f)
         utils.save_img(img, os.path.join(self.result_path, "generate.png"))
         utils.save_img(img)
