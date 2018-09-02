@@ -51,6 +51,7 @@ def combine_images(generated_images):
 
 
 class CelebA:
+
     def __init__(self, path, attr_file, batch_size, shape, img_ext=".jpg", attr_filter=None):
         self.img_list = []
         for dir_name in path:
@@ -59,6 +60,11 @@ class CelebA:
         self.shape = shape
         self.batch_size = batch_size
         self.batches = int(len(self.img_list) / batch_size)
+        self.all_label = ["有短髭", "柳叶眉", "有魅力的", "有眼袋", "秃头的", "有刘海", "大嘴唇", "大鼻子", "黑发", "金发", "睡眼惺松的", "棕发", "浓眉",
+                          "丰满的", "双下巴", "眼镜", "山羊胡", "白发", "浓妆", "高颧骨", "男性", "嘴轻微张开", "八字胡", "眯缝眼", "完全没有胡子", "鹅蛋脸",
+                          "白皮肤", "尖鼻子", "发际线高的", "脸红的", "有鬓脚", "微笑", "直发", "卷发", "戴耳环", "戴帽子", "涂口红", "戴项链", "戴领带",
+                          "年轻人"]
+        self.label = [self.all_label[x] for x in attr_filter]
 
     def get_generator(self):
         while True:
@@ -73,9 +79,9 @@ class CelebA:
                 y.append(attr)
                 i += 1
                 if i == self.batch_size:
-                    i = 0
-                    yield (np.array(x), np.array(y))
+                    yield (np.array(x), np.array(y).astype(int))
                     x, y = [], []
+                    i = 0
 
     def get_img_array(self, img_path):
         im = Image.open(img_path)
@@ -85,7 +91,8 @@ class CelebA:
         img = data_rescale(np.array(im).reshape(self.shape))
         return img
 
-    def get_attr_list(self, attr_file, attr_filter):
+    @staticmethod
+    def get_attr_list(attr_file, attr_filter):
         attributes_list_raw = open(attr_file).read().splitlines()
         attributes_list = []
         for item in attributes_list_raw:
@@ -95,13 +102,3 @@ class CelebA:
             else:
                 attributes_list.append([attr_raw[x] for x in attr_filter])
         return attributes_list
-
-
-"""
-attrs=["5_o_Clock_Shadow","Arched_Eyebrows","Attractive","Bags_Under_Eyes","Bald","Bangs","Big_Lips",
-"Big_Nose","Black_Hair","Blond_Hair","Blurry","Brown_Hair","Bushy_Eyebrows","Chubby","Double_Chin",
-"Eyeglasses","Goatee","Gray_Hair","Heavy_Makeup","High_Cheekbones","Male","Mouth_Slightly_Open",
-"Mustache","Narrow_Eyes","No_Beard","Oval_Face","Pale_Skin","Pointy_Nose","Receding_Hairline",
-"Rosy_Cheeks","Sideburns","Smiling","Straight_Hair","Wavy_Hair","Wearing_Earrings","Wearing_Hat",
-"Wearing_Lipstick","Wearing_Necklace","Wearing_Necktie","Young"]
-"""
