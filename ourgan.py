@@ -40,9 +40,9 @@ class OurGAN:
         return "OurGAN"
 
     def _setup(self):
-        self.g_opt = Adam(0.0002, 0.5)
-        self.g_l1_opt = Adam(0.0001, 0.5)
-        self.d_opt = Adam(0.0003, 0.5)
+        self.g_opt = Adam(0.0003, 0.8)
+        self.g_l1_opt = Adam(0.00005, 0.8)
+        self.d_opt = Adam(0.0003, 0.8)
 
         self.max_conv = 256
         self.init_dim = 8
@@ -66,18 +66,28 @@ class OurGAN:
     def _setup_g_1(self, name):
 
         n_conv = self.max_conv
-
+        # 8x8
         x = Concatenate()([self.noise_input, self.cond_input])
         x = Dense(self.init_dim ** 2 * self.max_conv * 2, activation="relu")(x)  # 不可使用两次全连接
-        x = Reshape((self.init_dim, self.init_dim, self.max_conv * 2))(x)
+        x = Reshape([self.init_dim, self.init_dim, self.max_conv * 2])(x)
         x = InstanceNormalization()(x)
-
-        for _ in range(1, 1 + self.conv_layers):
-            print("G Conv Filters:", n_conv)
-            x = Conv2DTranspose(n_conv, kernel_size=self.kernel_size, strides=2, padding='same')(x)
-            x = InstanceNormalization()(x)
-            x = Activation('relu')(x)
-            n_conv = int(n_conv / 2)
+        # 16x16
+        x = Conv2DTranspose(n_conv, kernel_size=self.kernel_size, strides=2, padding='same')(x)
+        x = InstanceNormalization()(x)
+        x = Activation('relu')(x)
+        # 32x32
+        n_conv = int(n_conv / 2)
+        x = Conv2DTranspose(n_conv, kernel_size=self.kernel_size, strides=2, padding='same')(x)
+        x = InstanceNormalization()(x)
+        x = Activation('relu')(x)
+        # 64x64
+        n_conv = int(n_conv / 2)
+        x = Conv2DTranspose(n_conv, kernel_size=self.kernel_size, strides=2, padding='same')(x)
+        x = Activation('relu')(x)
+        # 128x128
+        n_conv = int(n_conv / 2)
+        x = Conv2DTranspose(n_conv, kernel_size=self.kernel_size, strides=2, padding='same')(x)
+        x = Activation('relu')(x)
 
         self.g_output = Conv2D(self.channels, kernel_size=self.kernel_size, padding='same', activation='tanh')(x)
         self.generator = Model(inputs=[self.noise_input, self.cond_input], outputs=[self.g_output], name=name)
@@ -120,13 +130,15 @@ class OurGAN:
         gan_cond = np.random.randint(0, 2, size=[batch_size, self.cond_dim])
         gan2_noise = np.random.normal(size=(batch_size, self.noise_dim))
         gan2_cond = np.random.randint(0, 2, size=[batch_size, self.cond_dim])
-
+        g_noise = np.random.normal(size=(batch_size, self.noise_dim))
         # Targets
         fake_target = np.zeros(batch_size)
         true_target = np.ones(batch_size)
         g_target = np.ones((batch_size, 1))
 
         # Train
+
+        # g_loss = self.generator.train_on_batch([g_noise, cond_true], img_true)
         d_loss_fake = self.discriminator.train_on_batch([img_fake, cond_fake], [fake_target, fake_target])
         gan_loss_1 = self.gan.train_on_batch([gan_noise, gan_cond], [g_target, g_target])
         d_loss_true = self.discriminator.train_on_batch([img_true, cond_true], [true_target, true_target])
@@ -138,13 +150,7 @@ class OurGAN:
         gan_loss_d = (gan_loss_1[0] + gan_loss_2[0]) / 2
         gan_loss_c = (gan_loss_1[1] + gan_loss_2[1]) / 2
 
-        if (gan_loss_d + gan_loss_c) / d_loss > 3:
-            g_noise = np.random.normal(size=(batch_size, self.noise_dim))
-            g_loss = self.generator.train_on_batch([g_noise, cond_true], img_true)
-        else:
-            g_loss = 0
-
-        return g_loss, gan_loss_d, gan_loss_c, d_loss, d_acc, img_true, img_fake
+        return 0, gan_loss_d, gan_loss_c, d_loss, d_acc, img_true, img_fake
 
     @staticmethod
     def mutual_info_loss(c, c_given_x):
@@ -157,7 +163,7 @@ class OurGAN:
         models = {"G": self.generator, "D": self.discriminator, "GAN": self.gan}
         with open(self.result_path + "/models.txt", "w") as f:
             def print_fn(content):
-                f.write(content + "\n")
+                print(content + "\n", file=f)
 
             for item in models:
                 pad_len = int(0.5 * (53 - item.__len__()))
@@ -206,9 +212,15 @@ class OurGAN:
                                    os.path.join(self.result_path, "model"))
 
     def predict(self, batch_size):
-        cond = keras.utils.to_categorical(
-            ([i for i in range(self.cond_dim)] * (int(batch_size / self.cond_dim) + 1))[0:batch_size])
-        noise = np.random.uniform(-1, 1, size=(batch_size, self.noise_dim))
+        noise = np.random.normal(size=(batch_size, self.noise_dim))
+        np.set_printoptions(threshold=batch_size * self.noise_dim)
+        cond = np.random.randint(0, 2, size=[batch_size, self.cond_dim])
         img = utils.combine_images(self.generator.predict([noise, cond]))
-        utils.save_img(img, self.result_path + "/generate.png")
-        utils.save_img(img)
+        with open(os.path.join(self.result_path, "generate.log"), "w")as f:
+            f.write("Generate Image Condition\r\n\r")
+            id = 0
+            for item in cond:
+                id += 1
+                print(id, item, file=f)
+            utils.save_img(img, os.path.join(self.result_path, "generate.png"))
+            utils.save_img(img)

@@ -3,6 +3,9 @@ import os.path
 from git import Repo
 
 from config import args
+
+if args.mode != "train":
+    os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 from ourgan import OurGAN
 from utils import CelebA
 
@@ -33,4 +36,5 @@ if args.mode == "train":
     model.fit(args.batch_size, args.epoch, data, args.model_freq_batch, args.model_freq_epoch,
               args.img_freq)
 elif args.mode == "predict":
+    os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
     model.predict(args.batch_size)
