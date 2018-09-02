@@ -82,9 +82,12 @@ class OurGAN:
         x = InstanceNormalization()(x)
         x = Activation('relu')(x)
         # 64x64
-        n_conv = int(n_conv / 2)
-        x = Conv2DTranspose(n_conv, kernel_size=self.kernel_size, strides=2, padding='same')(x)
-        x = Activation('relu')(x)
+        if self.img_dim >= 64:
+            x = OurGAN._residual_block(x, n_conv, self.residual_kernel_size)
+            n_conv = int(n_conv / 2)
+            x = Conv2DTranspose(n_conv, kernel_size=self.kernel_size, strides=2, padding='same')(x)
+            x = InstanceNormalization()(x)
+            x = Activation('relu')(x)
         # 128x128
         if self.img_dim >= 128:
             x = OurGAN._residual_block(x, n_conv, self.residual_kernel_size)
