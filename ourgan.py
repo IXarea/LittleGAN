@@ -33,7 +33,7 @@ class OurGAN:
         self._setup()
 
         self.a_noise = np.random.normal(size=[64, self.noise_dim])
-        self.a_cond = np.random.randint(0, 2, size=[64, self.cond_dim])
+        self.a_cond = np.random.uniform(-1., 1., size=[64, self.cond_dim])
 
     @staticmethod
     def name():
@@ -122,7 +122,7 @@ class OurGAN:
     def _train(self, batch_size, data_generator):
         # Disc Data
         d_noise = np.random.normal(size=(batch_size, self.noise_dim))
-        cond_fake = np.random.randint(0, 2, size=[batch_size, self.cond_dim]).astype(float)
+        cond_fake = np.random.uniform(-1., 1., size=[batch_size, self.cond_dim])
         img_fake = self.generator.predict([d_noise, cond_fake])
         img_true, cond_true = data_generator.__next__()
         reverse_cond = 1 - cond_true
