@@ -60,8 +60,8 @@ class CelebA:
         self.shape = shape
         self.batch_size = batch_size
         self.batches = int(len(self.img_list) / batch_size)
-        self.all_label = ["有短髭", "柳叶眉", "有魅力的", "有眼袋", "秃头的", "有刘海", "大嘴唇", "大鼻子", "黑发", "金发", "睡眼惺松的", "棕发", "浓眉",
-                          "丰满的", "双下巴", "眼镜", "山羊胡", "白发", "浓妆", "高颧骨", "男性", "嘴轻微张开", "八字胡", "眯缝眼", "完全没有胡子", "鹅蛋脸",
+        self.all_label = ["有短髭", "柳叶眉", "有魅力", "有眼袋", "秃头", "有刘海", "大嘴唇", "大鼻子", "黑发", "金发", "睡眼惺松", "棕发", "浓眉",
+                          "丰满", "双下巴", "眼镜", "山羊胡", "白发", "浓妆", "高颧骨", "男性", "嘴轻微张开", "八字胡", "眯缝眼", "完全没有胡子", "鹅蛋脸",
                           "白皮肤", "尖鼻子", "发际线高的", "脸红的", "有鬓脚", "微笑", "直发", "卷发", "戴耳环", "戴帽子", "涂口红", "戴项链", "戴领带",
                           "年轻人"]
         self.label = [self.all_label[x] for x in attr_filter]
@@ -79,7 +79,7 @@ class CelebA:
                 y.append(attr)
                 i += 1
                 if i == self.batch_size:
-                    yield (np.array(x), np.array(y).astype(int))
+                    yield (np.array(x).astype(float), np.array(y).astype(float))
                     x, y = [], []
                     i = 0
 

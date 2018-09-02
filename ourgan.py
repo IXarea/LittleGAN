@@ -40,9 +40,9 @@ class OurGAN:
         return "OurGAN"
 
     def _setup(self):
-        self.g_opt = Adam(0.0002, 0.8)
-        # self.g_l1_opt = Adam(0.00005, 0.8)
-        self.d_opt = Adam(0.0002, 0.8)
+        self.g_opt = Adam(2e-4, 0.8)
+        self.g_l1_opt = Adam(4e-5, 0.8)
+        self.d_opt = Adam(2e-4, 0.8)
 
         self.max_conv = 256
         self.init_dim = 8
@@ -57,7 +57,7 @@ class OurGAN:
         self._setup_gan("GAN")
 
         self.discriminator.compile(self.d_opt, 'binary_crossentropy', metrics=['accuracy'])
-        # self.generator.compile(self.g_l1_opt, 'mae')
+        self.generator.compile(self.g_l1_opt, 'mae')
         # self.q_net.compile(self.d_q_opt, self.mutual_info_loss, metrics=['accuracy'])
 
         self.discriminator.trainable = False
@@ -122,7 +122,7 @@ class OurGAN:
     def _train(self, batch_size, data_generator):
         # Disc Data
         d_noise = np.random.normal(size=(batch_size, self.noise_dim))
-        cond_fake = np.random.randint(0, 2, size=[batch_size, self.cond_dim])
+        cond_fake = np.random.randint(0, 2, size=[batch_size, self.cond_dim]).astype(float)
         img_fake = self.generator.predict([d_noise, cond_fake])
         img_true, cond_true = data_generator.__next__()
         reverse_cond = 1 - cond_true
@@ -131,21 +131,21 @@ class OurGAN:
         gan_noise = np.random.normal(size=(batch_size, self.noise_dim))
         gan2_noise = np.random.normal(size=(batch_size, self.noise_dim))
         gan3_noise = np.random.normal(size=(batch_size, self.noise_dim))
-        # g_noise = np.random.normal(size=(batch_size, self.noise_dim))
+        g_noise = np.random.normal(size=(batch_size, self.noise_dim))
         # Targets
-        fake_target = np.zeros(batch_size)
-        true_target = np.ones(batch_size)
-        g_target = np.ones((batch_size, 1))
+        fake_target = np.zeros(batch_size).astype(float)
+        true_target = np.ones(batch_size).astype(float)
+        g_target = np.ones((batch_size, 1)).astype(float)
 
         # Train
 
-        # g_loss = self.generator.train_on_batch([g_noise, cond_true], img_true)
         d_loss_fake = self.discriminator.train_on_batch([img_fake, cond_fake], [fake_target, fake_target])
         gan_loss_1 = self.gan.train_on_batch([gan_noise, cond_true], [g_target, g_target])
         d_loss_true = self.discriminator.train_on_batch([img_true, cond_true], [true_target, true_target])
         gan_loss_2 = self.gan.train_on_batch([gan2_noise, cond_true], [g_target, g_target])
         d_loss_cfake = self.discriminator.train_on_batch([img_true, reverse_cond], [true_target, fake_target])
         gan_loss_3 = self.gan.train_on_batch([gan3_noise, cond_true], [g_target, g_target])
+        # g_loss = self.generator.train_on_batch([g_noise, cond_true], img_true)
 
         # Calculate
         d_loss = (d_loss_true[0] + d_loss_fake[0] + d_loss_cfake[0]) / 3
@@ -155,22 +155,15 @@ class OurGAN:
         gan_loss = (gan_loss_c + gan_loss_d) / 2
         rate = gan_loss / d_loss
         if rate > 2:
-            k.set_value(self.gan.optimizer.lr, 0.0003)
-            k.set_value(self.discriminator.optimizer.lr, 0.0002)
+            k.set_value(self.gan.optimizer.lr, 3e-4)
+            k.set_value(self.discriminator.optimizer.lr, 2e-4)
         elif rate < 0.5:
-            k.set_value(self.gan.optimizer.lr, 0.0002)
-            k.set_value(self.discriminator.optimizer.lr, 0.0003)
+            k.set_value(self.gan.optimizer.lr, 2e-4)
+            k.set_value(self.discriminator.optimizer.lr, 3e-4)
         else:
-            k.set_value(self.gan.optimizer.lr, 0.0002)
-            k.set_value(self.discriminator.optimizer.lr, 0.0002)
+            k.set_value(self.gan.optimizer.lr, 2e-4)
+            k.set_value(self.discriminator.optimizer.lr, 2e-4)
         return 0, gan_loss_d, gan_loss_c, d_loss, d_acc, img_true, img_fake
-
-    @staticmethod
-    def mutual_info_loss(c, c_given_x):
-        eps = 1e-8
-        conditional_entropy = k.mean(- k.sum(k.log(c_given_x + eps) * c, axis=1))
-        entropy = k.mean(- k.sum(k.log(c + eps) * c, axis=1))
-        return conditional_entropy + entropy
 
     def plot(self):
         models = {"G": self.generator, "D": self.discriminator, "GAN": self.gan}
@@ -224,18 +217,19 @@ class OurGAN:
                 utils.save_weights({"G-" + str(e): self.generator, "D-" + str(e): self.discriminator},
                                    os.path.join(self.result_path, "model"))
 
-    def predict(self, batch_size, data_generator):
-        real_img, real_cond = data_generator.get_generator().__next__()
-        noise = np.random.normal(size=(batch_size, self.noise_dim))
+    def predict(self, condition, noise=None, labels=None):
+        batch_size = condition.shape[0]
+        if noise is None:
+            noise = np.random.normal(size=[batch_size, self.noise_dim])
         np.set_printoptions(threshold=batch_size * self.noise_dim)
-        img = utils.combine_images(self.generator.predict([noise, real_cond]))
+        img = utils.combine_images(self.generator.predict([noise, condition]))
         with open(os.path.join(self.result_path, "generate.log"), "w")as f:
             f.write("Generate Image Condition\r\n\r")
-            print(data_generator.label, "\r\n", file=f)
+            if labels is not None:
+                print(labels, "\r\n", file=f)
             id = 0
-            for item in real_cond:
+            for item in condition:
                 id += 1
                 print(id, item, file=f)
         utils.save_img(img, os.path.join(self.result_path, "generate.png"))
         utils.save_img(img)
-        utils.save_img(utils.combine_images(real_img))
