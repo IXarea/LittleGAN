@@ -60,7 +60,7 @@ class OurGAN:
         self._setup_u_net()
         self.discriminator.compile(self.d_opt, 'binary_crossentropy', metrics=['accuracy'])
         self.generator.compile(self.g_l1_opt, 'mae')
-        # self.q_net.compile(self.d_q_opt, self.mutual_info_loss, metrics=['accuracy'])
+        self.u_net.compile(self.g_l1_opt, "mae")
 
         self.discriminator.trainable = False
         self.gan.compile(self.g_opt, ['binary_crossentropy', "binary_crossentropy"])
@@ -160,12 +160,10 @@ class OurGAN:
         # 64x64
         c = OurGAN.add_sequential_layer(self.cond_input, self.layers["c_32"])
         x = Concatenate()([x, c])
-        x = OurGAN._residual_block(x, self.conv_filter[1], self.residual_kernel_size)
         x = OurGAN.add_sequential_layer(x, self.layers["g_64"])
         # 128x128
         c = OurGAN.add_sequential_layer(self.cond_input, self.layers["c_64"])
         x = Concatenate()([x, c])
-        x = OurGAN._residual_block(x, self.conv_filter[2], self.residual_kernel_size)
         x = OurGAN.add_sequential_layer(x, self.layers["g_128"])
 
         self.g_output = OurGAN.add_sequential_layer(x, self.layers["g_out"])
@@ -263,11 +261,15 @@ class OurGAN:
 
         d_loss_fake = self.discriminator.train_on_batch([img_fake, cond_fake], [fake_target, fake_target])
         gan_loss_1 = self.gan.train_on_batch([gan_noise, cond_true], [g_target, g_target])
+        u_loss_1 = self.u_net.train_on_batch([np.clip(img_true - img_true, -1, 1), cond_true], img_true)
+
         d_loss_true = self.discriminator.train_on_batch([img_true, cond_true], [true_target, true_target])
         gan_loss_2 = self.gan.train_on_batch([gan2_noise, cond_true], [g_target, g_target])
+        g_loss = self.generator.train_on_batch([g_noise, cond_true], img_true)
+
         d_loss_cfake = self.discriminator.train_on_batch([img_true, reverse_cond], [true_target, fake_target])
         gan_loss_3 = self.gan.train_on_batch([gan3_noise, cond_true], [g_target, g_target])
-        # g_loss = self.generator.train_on_batch([g_noise, cond_true], img_true)
+        u_loss_2 = self.u_net.train_on_batch([np.clip(img_fake - img_true, -1, 1), cond_true], img_true)
 
         # Calculate
         d_loss = (d_loss_true[0] + d_loss_fake[0] + d_loss_cfake[0]) / 3
@@ -275,6 +277,7 @@ class OurGAN:
         gan_loss_d = (gan_loss_1[0] + gan_loss_2[0] + gan_loss_3[0]) / 2
         gan_loss_c = (gan_loss_1[1] + gan_loss_2[0] + gan_loss_3[0]) / 2
         gan_loss = (gan_loss_c + gan_loss_d) / 2
+        u_loss = (u_loss_1 + u_loss_2) / 2
         rate = gan_loss / d_loss
         if rate > 2:
             k.set_value(self.gan.optimizer.lr, 3e-4)
@@ -285,7 +288,7 @@ class OurGAN:
         else:
             k.set_value(self.gan.optimizer.lr, 2e-4)
             k.set_value(self.discriminator.optimizer.lr, 2e-4)
-        return 0, gan_loss_d, gan_loss_c, d_loss, d_acc, img_true, img_fake
+        return g_loss, gan_loss_d, gan_loss_c, d_loss, d_acc, u_loss, img_true, img_fake
 
     def plot(self):
         models = {"G": self.generator, "D": self.discriminator, "U-NET": self.u_net, "GAN": self.gan}
@@ -316,15 +319,16 @@ class OurGAN:
         for e in range(1, 1 + epoch):
             progress_bar = Progbar(batches * batch_size)
             for b in range(1, 1 + batches):
-                g_loss, gan_loss_d, gan_loss_c, d_loss, d_acc, img_true, img_fake = self._train(batch_size,
-                                                                                                data_generator)
+                g_loss, gan_loss_d, gan_loss_c, d_loss, d_acc, u_loss, img_true, img_fake = self._train(batch_size,
+                                                                                                        data_generator)
 
-                progress_bar.add(batch_size, values=[("LG", g_loss), ("LGd", gan_loss_d), ("LGc", gan_loss_c),
-                                                     ("Loss_D", d_loss), ("Acc_D", d_acc)])
+                progress_bar.add(batch_size, values=[("L_G", g_loss), ("L_Gd", gan_loss_d), ("L_Gc", gan_loss_c),
+                                                     ("L_D", d_loss), ("AD", d_acc), ("L_U", d_acc)])
                 if b % (img_freq // 2) == 0:
                     with open(self.result_path + "/train.log", "a") as f:
-                        f.write("\r\n({},{}) G_L:{}, G_Ld:{}, G_Lc:{}, D_L: {}, D_Acc: {}"
-                                .format(e, b, g_loss, gan_loss_d, gan_loss_c, d_loss, d_acc))
+                        f.write("\r\n({:d},{:d}) G_L:{:.2f}, G_Ld:{:.2f},\
+                                 G_Lc:{:.2f}, D_L: {:.2f}, D_Acc: {:.2f}, U_L: {:.2f}"
+                                .format(e, b, g_loss, gan_loss_d, gan_loss_c, d_loss, d_acc, u_loss))
                 if b % img_freq == 0:
                     utils.save_img(utils.combine_images(img_true),
                                    os.path.join(self.result_path, "real.png"))
@@ -332,12 +336,15 @@ class OurGAN:
                                    os.path.join(self.result_path, "gen_img/{}-{}.png".format(e, b)))
                     utils.save_img(utils.combine_images(self.generator.predict([self.a_noise, self.a_cond])),
                                    os.path.join(self.result_path, "ev_img/{}-{}.png").format(e, b))
+                    utils.save_img(utils.combine_images(self.u_net.predict([img_fake, self.a_cond])),
+                                   os.path.join(self.result_path, "ev_img/{}-{}-u.png").format(e, b))
                 if b % model_freq_batch == 0:
-                    utils.save_weights({"G": self.generator, "D": self.discriminator},
+                    utils.save_weights({"G": self.generator, "D": self.discriminator, "U-Net": self.u_net},
                                        os.path.join(self.result_path, "model"))
             if e % model_freq_epoch == 0:
-                utils.save_weights({"G-" + str(e): self.generator, "D-" + str(e): self.discriminator},
-                                   os.path.join(self.result_path, "model"))
+                utils.save_weights(
+                    {"G-" + str(e): self.generator, "D-" + str(e): self.discriminator, "U-Net-" + str(e): self.u_net},
+                    os.path.join(self.result_path, "model"))
 
     def predict(self, condition, noise=None, labels=None):
         batch_size = condition.shape[0]

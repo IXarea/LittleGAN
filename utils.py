@@ -85,7 +85,7 @@ class CelebA:
 
     def get_img_array(self, img_path):
         im = Image.open(img_path)
-        im.thumbnail((self.shape[0], self.shape[1]))
+        # im.thumbnail((self.shape[0], self.shape[1]))
         if self.shape[2] == 1:
             im.convert("L")
         img = data_rescale(np.array(im).reshape(self.shape))

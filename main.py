@@ -14,13 +14,13 @@ attr = [20, 15, 39, 8, 9, 11, 17, 33, 2, 4, 5, 26]
 cond_dim = len(attr)
 channels = 3
 print("\r\nApplication Params: ", args, "\r\n")
-model = OurGAN(args.noise, cond_dim, args.img_size, channels, "./result-" + args.name)
+model = OurGAN(args.noise, cond_dim, args.img_size, channels, os.path.abspath("../result/" + args.name))
 if args.plot == 1:
     model.plot()
-g_file = os.path.abspath("./result-" + args.name + "/model/G_weight.h5")
+g_file = os.path.abspath("../result/" + args.name + "/model/G_weight.h5")
 if os.path.isfile(g_file):
     model.generator.load_weights(g_file)
-d_file = os.path.abspath("./result-" + args.name + "/model/D_weight.h5")
+d_file = os.path.abspath("../result/" + args.name + "/model/D_weight.h5")
 if os.path.isfile(d_file):
     model.discriminator.load_weights(d_file)
 
