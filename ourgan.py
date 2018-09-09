@@ -4,7 +4,9 @@ import os
 import keras
 import keras.backend as k
 import numpy as np
+import tensorflow as tf
 from git import Repo
+from keras.callbacks import TensorBoard
 from keras.layers import Add, Input, Dense, Reshape, Conv2D, Flatten, Activation, LeakyReLU, Dropout, Conv2DTranspose
 from keras.layers.merge import Concatenate
 from keras.models import Model
@@ -34,6 +36,8 @@ class OurGAN:
 
         self.a_noise = np.random.normal(size=[64, self.noise_dim])
         self.a_cond = np.random.uniform(-1., 1., size=[64, self.cond_dim])
+        self.tb = TensorBoard(log_dir=self.result_path, write_images=True)
+        self.tb.set_model(self.all_net)
 
     @staticmethod
     def name():
@@ -56,8 +60,9 @@ class OurGAN:
         self._setup_layers()
         self._setup_g("G")
         self._setup_d("D")
-        self._setup_gan("GAN")
         self._setup_u_net()
+        self._setup_gan("GAN")
+
         self.discriminator.compile(self.d_opt, 'binary_crossentropy', metrics=['accuracy'])
         self.generator.compile(self.g_l1_opt, 'mae')
         self.u_net.compile(self.g_l1_opt, "mae")
@@ -238,6 +243,9 @@ class OurGAN:
         g_output = self.generator([self.noise_input, self.cond_input])
         d_output = self.discriminator([g_output, self.cond_input])
         self.gan = Model(inputs=[self.noise_input, self.cond_input], outputs=d_output, name=name)
+        u_output = self.u_net([g_output, self.cond_input])
+        d_output_2 = self.discriminator([u_output, self.cond_input])
+        self.all_net = Model([self.noise_input, self.cond_input], d_output_2)
 
     def _train(self, batch_size, data_generator):
         # Disc Data
@@ -303,7 +311,7 @@ class OurGAN:
                 keras.utils.plot_model(
                     models[item], to_file=self.result_path + "/%s.png" % item, show_shapes=True)
 
-    def fit(self, batch_size, epoch, data, model_freq_batch, model_freq_epoch, img_freq):
+    def fit(self, batch_size, epoch, data, model_freq_batch, model_freq_epoch, img_freq, start_epoch):
         """
         训练方法
         """
@@ -311,24 +319,17 @@ class OurGAN:
         data_generator = data.get_generator()
         batches = data.batches
         repo = Repo(os.path.dirname(os.path.realpath(__file__)))
-        with open(self.result_path + "/train.log", "w") as f:
-            f.write("==================  Train Start  ==================")
-            f.write("\r\nGit Repo Version: " + repo.head.commit.name_rev)
         repo.archive(open(self.result_path + "/program.tar", "wb"))
-
-        for e in range(1, 1 + epoch):
+        title = ["LossG", "LossGd", "LossGc", "LossD", "AccD", "LossU"]
+        for e in range(start_epoch, 1 + epoch):
             progress_bar = Progbar(batches * batch_size)
             for b in range(1, 1 + batches):
-                g_loss, gan_loss_d, gan_loss_c, d_loss, d_acc, u_loss, img_true, img_fake = self._train(batch_size,
-                                                                                                        data_generator)
+                result = self._train(batch_size, data_generator)
+                log = result[:6]
 
-                progress_bar.add(batch_size, values=[("L_G", g_loss), ("L_Gd", gan_loss_d), ("L_Gc", gan_loss_c),
-                                                     ("L_D", d_loss), ("AD", d_acc), ("L_U", d_acc)])
-                if b % (img_freq // 2) == 0:
-                    with open(self.result_path + "/train.log", "a") as f:
-                        f.write("\r\n({:d},{:d}) G_L:{:.2f}, G_Ld:{:.2f},\
-                                 G_Lc:{:.2f}, D_L: {:.2f}, D_Acc: {:.2f}, U_L: {:.2f}"
-                                .format(e, b, g_loss, gan_loss_d, gan_loss_c, d_loss, d_acc, u_loss))
+                img_true, img_fake = result[6], result[7]
+                progress_bar.add(batch_size, values=[x for x in zip(title, log)])
+                OurGAN.write_log(self.tb, [str(e) + "/" + x for x in title], log, b)
                 if b % img_freq == 0:
                     utils.save_img(utils.combine_images(img_true),
                                    os.path.join(self.result_path, "real.png"))
@@ -337,7 +338,7 @@ class OurGAN:
                     utils.save_img(utils.combine_images(self.generator.predict([self.a_noise, self.a_cond])),
                                    os.path.join(self.result_path, "ev_img/{}-{}.png").format(e, b))
                     utils.save_img(utils.combine_images(self.u_net.predict([img_fake, self.a_cond])),
-                                   os.path.join(self.result_path, "ev_img/{}-{}-u.png").format(e, b))
+                                   os.path.join(self.result_path, "ev_img/u-{}-{}.png").format(e, b))
                 if b % model_freq_batch == 0:
                     utils.save_weights({"G": self.generator, "D": self.discriminator, "U-Net": self.u_net},
                                        os.path.join(self.result_path, "model"))
@@ -362,3 +363,13 @@ class OurGAN:
                 print(lid, item, file=f)
         utils.save_img(img, os.path.join(self.result_path, "generate.png"))
         utils.save_img(img)
+
+    @staticmethod
+    def write_log(callback, names, logs, batch_no):
+        for name, value in zip(names, logs):
+            summary = tf.Summary()
+            summary_value = summary.value.add()
+            summary_value.simple_value = value
+            summary_value.tag = name
+            callback.writer.add_summary(summary, batch_no)
+        callback.writer.flush()

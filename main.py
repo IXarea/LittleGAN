@@ -19,10 +19,16 @@ if args.plot == 1:
     model.plot()
 g_file = os.path.abspath("../result/" + args.name + "/model/G_weight.h5")
 if os.path.isfile(g_file):
+    print("\r\n Loading Exist Generator Weight")
     model.generator.load_weights(g_file)
 d_file = os.path.abspath("../result/" + args.name + "/model/D_weight.h5")
 if os.path.isfile(d_file):
+    print("\r\n Loading Exist Discriminator Weight")
     model.discriminator.load_weights(d_file)
+u_file = os.path.abspath("../result/" + args.name + "/model/U-Net_weight.h5")
+if os.path.isfile(u_file):
+    print("\r\n Loading Exist U-Net Weight")
+    model.u_net.load_weights(u_file)
 
 if args.attr_path is None or args.img_path is None:
     if args.mode == "train" or args.mode == "predict":
@@ -44,7 +50,7 @@ else:
         if repo.is_dirty() and args.test == 0:
             raise EnvironmentError("Git repo is Dirty! Please train after committed.")
         model.fit(args.batch_size, args.epoch, data, args.model_freq_batch, args.model_freq_epoch,
-                  args.img_freq)
+                  args.img_freq, args.start)
     elif args.mode == "predict":
         real_img, real_cond = data.get_generator().__next__()
         model.predict(real_cond)

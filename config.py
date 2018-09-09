@@ -10,6 +10,7 @@ parser.add_argument("-i", "--img_path", type=str, required=False, help="image pa
 parser.add_argument("-a", "--attr_path", type=str, required=False, help="attr file path")
 
 parser.add_argument("--epoch", type=int, required=False, help="epoch times", default=100)
+parser.add_argument("--start", type=int, required=False, help="start epoch times", default=1)
 parser.add_argument("--plot", type=int, required=False, help="print the network info", default=0)
 parser.add_argument("--test", type=int, required=False, help="ignore git repo is dirty", default=0)
 parser.add_argument("--noise", type=int, required=False, help="noise dimension", default=100)
