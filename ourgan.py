@@ -7,7 +7,8 @@ import numpy as np
 import tensorflow as tf
 from git import Repo
 from keras.callbacks import TensorBoard
-from keras.layers import Add, Input, Dense, Reshape, Conv2D, Flatten, Activation, LeakyReLU, Dropout, Conv2DTranspose
+from keras.layers import Add, Input, Dense, Reshape, Conv2D, Flatten, Activation, LeakyReLU, Dropout, Conv2DTranspose, \
+    Lambda
 from keras.layers.merge import Concatenate
 from keras.models import Model
 from keras.optimizers import Adam
@@ -221,16 +222,19 @@ class OurGAN:
         x = OurGAN.add_sequential_layer(x, self.layers["g_16"])
 
         x = Add()([x, d_32])
+        x = Lambda(lambda data: data * 0.5)(x)
         c = OurGAN.add_sequential_layer(self.cond_input, self.layers["c_16"])
         x = Concatenate()([x, c])
         x = OurGAN.add_sequential_layer(x, self.layers["g_32"])
 
         x = Add()([x, d_64])
+        x = Lambda(lambda data: data * 0.5)(x)
         c = OurGAN.add_sequential_layer(self.cond_input, self.layers["c_32"])
         x = Concatenate()([x, c])
         x = OurGAN.add_sequential_layer(x, self.layers["g_64"])
 
         x = Add()([x, d_128])
+        x = Lambda(lambda data: data * 0.5)(x)
         c = OurGAN.add_sequential_layer(self.cond_input, self.layers["c_64"])
         x = Concatenate()([x, c])
         x = OurGAN.add_sequential_layer(x, self.layers["g_128"])
