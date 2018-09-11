@@ -7,8 +7,7 @@ import numpy as np
 import tensorflow as tf
 from git import Repo
 from keras.callbacks import TensorBoard
-from keras.layers import Add, Input, Dense, Reshape, Conv2D, Flatten, Activation, LeakyReLU, Dropout, Conv2DTranspose, \
-    Lambda
+from keras.layers import Add, Input, Dense, Reshape, Conv2D, Flatten, LeakyReLU, Dropout, Conv2DTranspose
 from keras.layers.merge import Concatenate
 from keras.models import Model
 from keras.optimizers import Adam
@@ -78,25 +77,46 @@ class OurGAN:
         self.layers["g_16"] = [
             Conv2DTranspose(self.conv_filter[1], kernel_size=self.kernel_size, strides=2, padding='same'),
             InstanceNormalization(),
-            Activation('relu')
+            LeakyReLU(alpha=0.2)
         ]
         self.layers["g_32"] = [
             Conv2DTranspose(self.conv_filter[2], kernel_size=self.kernel_size, strides=2, padding='same'),
             InstanceNormalization(),
-            Activation('relu')
+            LeakyReLU(alpha=0.2)
         ]
         self.layers["g_64"] = [
             Conv2DTranspose(self.conv_filter[3], kernel_size=self.kernel_size, strides=2, padding='same'),
             InstanceNormalization(),
-            Activation('relu')
+            LeakyReLU(alpha=0.2)
         ]
         # Out：128*128*64
         self.layers["g_128"] = [
             Conv2DTranspose(self.conv_filter[4], kernel_size=self.kernel_size, strides=2, padding='same'),
             InstanceNormalization(),
-            Activation('relu')
+            LeakyReLU(alpha=0.2)
         ]
-        self.layers["g_out"] = [Conv2D(self.channels, kernel_size=self.kernel_size, padding='same', activation='tanh')]
+
+        self.layers["u_g_16"] = [
+            Conv2DTranspose(self.conv_filter[1], kernel_size=self.kernel_size, strides=2, padding='same'),
+            InstanceNormalization(),
+            LeakyReLU(alpha=0.2)
+        ]
+        self.layers["u_g_32"] = [
+            Conv2DTranspose(self.conv_filter[2], kernel_size=self.kernel_size, strides=2, padding='same'),
+            InstanceNormalization(),
+            LeakyReLU(alpha=0.2)
+        ]
+        self.layers["u_g_64"] = [
+            Conv2DTranspose(self.conv_filter[3], kernel_size=self.kernel_size, strides=2, padding='same'),
+            InstanceNormalization(),
+            LeakyReLU(alpha=0.2)
+        ]
+        # Out：128*128*64
+        self.layers["u_g_128"] = [
+            Conv2DTranspose(self.conv_filter[4], kernel_size=self.kernel_size, strides=2, padding='same'),
+            InstanceNormalization(),
+            LeakyReLU(alpha=0.2)
+        ]
 
         # Out:64*64*128
         self.layers["d_128"] = [
@@ -127,32 +147,16 @@ class OurGAN:
             Dropout(0.25)
         ]
 
-        self.layers["c_8"] = [
-            Dense(8 ** 2),
-            Reshape([8, 8, 1])
-
-        ]
-        self.layers["c_16"] = [
-            Dense(16 ** 2),
-            Reshape([16, 16, 1])
-
-        ]
-        self.layers["c_32"] = [
-            Dense(32 ** 2),
-            Reshape([32, 32, 1])
-
-        ]
-        self.layers["c_64"] = [
-            Dense(64 ** 2),
-            Reshape([64, 64, 1])
-
-        ]
+        self.layers["c_8"] = [Dense(8 ** 2), Reshape([8, 8, 1])]
+        self.layers["c_16"] = [Dense(16 ** 2), Reshape([16, 16, 1])]
+        self.layers["c_32"] = [Dense(32 ** 2), Reshape([32, 32, 1])]
+        self.layers["c_64"] = [Dense(64 ** 2), Reshape([64, 64, 1])]
 
     def _setup_g(self, name):
 
         # 8x8
         x = Concatenate()([self.noise_input, self.cond_input])
-        x = Dense(self.init_dim ** 2 * self.conv_filter[0], activation="relu")(x)  # 不可使用两次全连接
+        x = Dense(self.init_dim ** 2 * self.conv_filter[0], activation=LeakyReLU(0.2))(x)  # 不可使用两次全连接
         x = Reshape([self.init_dim, self.init_dim, self.conv_filter[0]])(x)
         x = InstanceNormalization()(x)
 
@@ -172,7 +176,7 @@ class OurGAN:
         x = Concatenate()([x, c])
         x = OurGAN.add_sequential_layer(x, self.layers["g_128"])
 
-        self.g_output = OurGAN.add_sequential_layer(x, self.layers["g_out"])
+        self.g_output = Conv2D(self.channels, kernel_size=self.kernel_size, padding='same', activation='tanh')(x)
         self.generator = Model(inputs=[self.noise_input, self.cond_input], outputs=[self.g_output], name=name)
 
     def _setup_d(self, d_name):
@@ -203,7 +207,7 @@ class OurGAN:
     def _residual_block(layer, n_conv, kernel):
         x = Conv2D(n_conv, kernel_size=kernel, strides=1, padding='same')(layer)
         x = InstanceNormalization()(x)
-        x = Activation('relu')(x)
+        x = LeakyReLU(alpha=0.2)(x)
         x = Conv2D(int(layer.shape[-1]), kernel_size=kernel, strides=1, padding='same')(x)
         x = Add()([layer, x])
         return x
@@ -219,27 +223,21 @@ class OurGAN:
         x = OurGAN._residual_block(x, self.conv_filter[0], self.residual_kernel_size)
         c = OurGAN.add_sequential_layer(self.cond_input, self.layers["c_8"])
         x = Concatenate()([x, c])
-        x = OurGAN.add_sequential_layer(x, self.layers["g_16"])
+        x = OurGAN.add_sequential_layer(x, self.layers["u_g_16"])
 
-        x = Add()([x, d_32])
-        x = Lambda(lambda data: data * 0.5)(x)
         c = OurGAN.add_sequential_layer(self.cond_input, self.layers["c_16"])
-        x = Concatenate()([x, c])
-        x = OurGAN.add_sequential_layer(x, self.layers["g_32"])
+        x = Concatenate()([x, d_32, c])
+        x = OurGAN.add_sequential_layer(x, self.layers["u_g_32"])
 
-        x = Add()([x, d_64])
-        x = Lambda(lambda data: data * 0.5)(x)
         c = OurGAN.add_sequential_layer(self.cond_input, self.layers["c_32"])
-        x = Concatenate()([x, c])
-        x = OurGAN.add_sequential_layer(x, self.layers["g_64"])
+        x = Concatenate()([x, d_64, c])
+        x = OurGAN.add_sequential_layer(x, self.layers["u_g_64"])
 
-        x = Add()([x, d_128])
-        x = Lambda(lambda data: data * 0.5)(x)
         c = OurGAN.add_sequential_layer(self.cond_input, self.layers["c_64"])
-        x = Concatenate()([x, c])
-        x = OurGAN.add_sequential_layer(x, self.layers["g_128"])
+        x = Concatenate()([x, d_128, c])
+        x = OurGAN.add_sequential_layer(x, self.layers["u_g_128"])
 
-        x = OurGAN.add_sequential_layer(x, self.layers["g_out"])
+        x = Conv2D(self.channels, kernel_size=self.kernel_size, padding='same', activation='tanh')(x)
 
         self.u_net = Model([self.img_input, self.cond_input], x)
 
@@ -273,15 +271,15 @@ class OurGAN:
 
         d_loss_fake = self.discriminator.train_on_batch([img_fake, cond_fake], [fake_target, fake_target])
         gan_loss_1 = self.gan.train_on_batch([gan_noise, cond_true], [g_target, g_target])
-        u_loss_1 = self.u_net.train_on_batch([np.clip(img_true - img_true, -1, 1), cond_true], img_true)
+        # u_loss_1 = self.u_net.train_on_batch([np.clip(img_true - img_true, -1, 1), cond_true], img_true)
 
         d_loss_true = self.discriminator.train_on_batch([img_true, cond_true], [true_target, true_target])
         gan_loss_2 = self.gan.train_on_batch([gan2_noise, cond_true], [g_target, g_target])
-        g_loss = self.generator.train_on_batch([g_noise, cond_true], img_true)
+        # g_loss = self.generator.train_on_batch([g_noise, cond_true], img_true)
 
         d_loss_cfake = self.discriminator.train_on_batch([img_true, reverse_cond], [true_target, fake_target])
         gan_loss_3 = self.gan.train_on_batch([gan3_noise, cond_true], [g_target, g_target])
-        u_loss_2 = self.u_net.train_on_batch([np.clip(img_fake - img_true, -1, 1), cond_true], img_true)
+        # u_loss_2 = self.u_net.train_on_batch([np.clip(img_fake - img_true, -1, 1), cond_true], img_true)
 
         # Calculate
         d_loss = (d_loss_true[0] + d_loss_fake[0] + d_loss_cfake[0]) / 3
@@ -289,7 +287,8 @@ class OurGAN:
         gan_loss_d = (gan_loss_1[0] + gan_loss_2[0] + gan_loss_3[0]) / 2
         gan_loss_c = (gan_loss_1[1] + gan_loss_2[0] + gan_loss_3[0]) / 2
         gan_loss = (gan_loss_c + gan_loss_d) / 2
-        u_loss = (u_loss_1 + u_loss_2) / 2
+        # u_loss = (u_loss_1 + u_loss_2) / 2
+        u_loss, g_loss = 0, 0
         rate = gan_loss / d_loss
         if rate > 2:
             k.set_value(self.gan.optimizer.lr, 3e-4)
