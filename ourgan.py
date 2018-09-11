@@ -37,7 +37,7 @@ class OurGAN:
         self.a_noise = np.random.normal(size=[64, self.noise_dim])
         self.a_cond = np.random.uniform(-1., 1., size=[64, self.cond_dim])
         self.tb = TensorBoard(log_dir=self.result_path, write_images=True)
-        self.tb.set_model(self.all_net)
+        self.tb.set_model(self.generator)
 
     @staticmethod
     def name():
@@ -62,13 +62,46 @@ class OurGAN:
         self._setup_d("D")
         self._setup_u_net()
         self._setup_gan("GAN")
+        self._setup_train()
 
-        self.discriminator.compile(self.d_opt, 'binary_crossentropy', metrics=['accuracy'])
-        self.generator.compile(self.g_l1_opt, 'mae')
-        self.u_net.compile(self.g_l1_opt, "mae")
+        # self.discriminator.compile(self.d_opt, 'binary_crossentropy', metrics=['accuracy'])
+        # self.generator.compile(self.g_l1_opt, 'mae')
+        # self.u_net.compile(self.g_l1_opt, "mae")
 
-        self.discriminator.trainable = False
-        self.gan.compile(self.g_opt, ['binary_crossentropy', "binary_crossentropy"])
+        # self.discriminator.trainable = False
+        # self.gan.compile(self.g_opt, ['binary_crossentropy', "binary_crossentropy"])
+
+    def _setup_train(self):
+        self.p_noise = tf.placeholder(tf.float32, shape=[None, self.noise_dim])
+        self.p_cond = tf.placeholder(tf.float32, shape=[None, self.cond_dim])
+        self.p_real_img = tf.placeholder(tf.float32, shape=[None, self.img_dim, self.img_dim, self.channels])
+
+        self.fake_img = self.generator([self.p_noise, self.p_cond])
+
+        self.dis_fake = self.discriminator(self.fake_img)
+        self.dis_fake_c = self.discriminator_c([self.fake_img, self.p_cond])
+
+        self.dis_real = self.discriminator(self.p_real_img)
+        self.dis_real_c = self.discriminator_c([self.p_real_img, self.p_cond])
+
+        self.gen_loss = -k.mean(self.dis_fake) - k.mean(self.dis_fake_c)
+        self.dis_loss = k.mean(self.dis_fake) + k.mean(self.dis_fake_c) - k.mean(self.dis_real) - k.mean(
+            self.dis_real_c)
+        alpha = k.random_uniform(shape=[k.shape(self.p_noise)[0], 1, 1, 1])
+        diff = self.fake_img - self.p_real_img
+        interp = self.p_real_img + alpha * diff
+        gradients = k.gradients(self.discriminator([interp]), [interp])[0]
+        gp = k.mean(k.square(k.sqrt(k.sum(k.square(gradients), axis=1)) - 1))
+        self.lambda_gp = 10
+        self.dis_loss += self.lambda_gp * gp
+        self.dis_updater = tf.train \
+            .AdamOptimizer(learning_rate=2e-4) \
+            .minimize(self.dis_loss, var_list=self.discriminator.trainable_weights)
+        self.gen_updater = tf.train \
+            .AdamOptimizer(learning_rate=2e-4) \
+            .minimize(self.gen_loss, var_list=self.generator.trainable_weights)
+        self.sess = tf.Session()
+        self.sess.run(tf.global_variables_initializer())
 
     def _setup_layers(self):
         self.layers = {}
@@ -147,9 +180,9 @@ class OurGAN:
             Dropout(0.25)
         ]
 
-        self.layers["c_8"] = [Dense(8 ** 2), Reshape([8, 8, 1])]
-        self.layers["c_16"] = [Dense(16 ** 2), Reshape([16, 16, 1])]
-        self.layers["c_32"] = [Dense(32 ** 2), Reshape([32, 32, 1])]
+        self.layers["c_8"] = [Dense(8 ** 2 * 64), Reshape([8, 8, 64])]
+        self.layers["c_16"] = [Dense(16 ** 2 * 16), Reshape([16, 16, 16])]
+        self.layers["c_32"] = [Dense(32 ** 2 * 4), Reshape([32, 32, 4])]
         self.layers["c_64"] = [Dense(64 ** 2), Reshape([64, 64, 1])]
 
     def _setup_g(self, name):
@@ -187,14 +220,13 @@ class OurGAN:
         x = OurGAN.add_sequential_layer(x, self.layers["d_16"])
 
         x = Flatten()(x)
-        self.d_output = Dense(1, activation="sigmoid")(x)
-
+        self.d_output = Dense(1)(x)
+        self.discriminator = Model(inputs=self.img_input, outputs=self.d_output)
         x = Dense(128)(x)
         x = Concatenate()([x, self.cond_input])
-        self.dc_output = Dense(1, activation="sigmoid")(x)
+        self.dc_output = Dense(1)(x)
 
-        self.discriminator = Model(inputs=[self.img_input, self.cond_input], outputs=[self.d_output, self.dc_output],
-                                   name=d_name)
+        self.discriminator_c = Model(inputs=[self.img_input, self.cond_input], outputs=self.dc_output)
 
     @staticmethod
     def add_sequential_layer(layer_in, layers_add):
@@ -242,19 +274,30 @@ class OurGAN:
         self.u_net = Model([self.img_input, self.cond_input], x)
 
     def _setup_gan(self, name):
-        g_output = self.generator([self.noise_input, self.cond_input])
-        d_output = self.discriminator([g_output, self.cond_input])
-        self.gan = Model(inputs=[self.noise_input, self.cond_input], outputs=d_output, name=name)
-        u_output = self.u_net([g_output, self.cond_input])
-        d_output_2 = self.discriminator([u_output, self.cond_input])
-        self.all_net = Model([self.noise_input, self.cond_input], d_output_2)
+        pass
+        # g_output = self.generator([self.noise_input, self.cond_input])
+        # d_output = self.discriminator([g_output, self.cond_input])
+        # self.gan = Model(inputs=[self.noise_input, self.cond_input], outputs=d_output, name=name)
+        # u_output = self.u_net([g_output, self.cond_input])
+        # d_output_2 = self.discriminator([u_output, self.cond_input])
+        # self.all_net = Model([self.noise_input, self.cond_input], d_output_2)
 
     def _train(self, batch_size, data_generator):
         # Disc Data
-        d_noise = np.random.normal(size=(batch_size, self.noise_dim))
-        cond_fake = np.random.uniform(-1., 1., size=[batch_size, self.cond_dim])
-        img_fake = self.generator.predict([d_noise, cond_fake])
         img_true, cond_true = data_generator.__next__()
+        d_noise = np.random.normal(size=(batch_size, self.noise_dim))
+        d_loss, _ = self.sess.run([self.dis_loss, self.dis_updater],
+                                  {self.p_real_img: img_true, self.p_cond: cond_true, self.p_noise: d_noise})
+
+        cond_fake = np.random.uniform(-1., 1., size=[batch_size, self.cond_dim])
+        g_noise = np.random.normal(size=(batch_size, self.noise_dim))
+        g_loss, _ = self.sess.run([self.gen_loss, self.gen_updater], {self.p_noise: g_noise, self.p_cond: cond_fake})
+
+        return g_loss, d_loss, 0, 0, 0, 0, img_true, img_true
+        """
+        
+        img_fake = self.generator.predict([d_noise, cond_fake])
+
         reverse_cond = 1 - cond_true
 
         # Gen Data
@@ -300,9 +343,10 @@ class OurGAN:
             k.set_value(self.gan.optimizer.lr, 2e-4)
             k.set_value(self.discriminator.optimizer.lr, 2e-4)
         return g_loss, gan_loss_d, gan_loss_c, d_loss, d_acc, u_loss, img_true, img_fake
+        """
 
     def plot(self):
-        models = {"G": self.generator, "D": self.discriminator, "U-NET": self.u_net, "GAN": self.gan}
+        models = {"G": self.generator, "D": self.discriminator, "U-NET": self.u_net}
         with open(self.result_path + "/models.txt", "w") as f:
             def print_fn(content):
                 print(content + "\n", file=f)
@@ -323,14 +367,14 @@ class OurGAN:
         batches = data.batches
         repo = Repo(os.path.dirname(os.path.realpath(__file__)))
         repo.archive(open(self.result_path + "/program.tar", "wb"))
-        title = ["LossG", "LossGd", "LossGc", "LossD", "AccD", "LossU"]
+        title = ["LossG", "LossD", "AccD", "LossU"]
         for e in range(start_epoch, 1 + epoch):
             progress_bar = Progbar(batches * batch_size)
             for b in range(1, 1 + batches):
                 result = self._train(batch_size, data_generator)
-                log = result[:6]
+                log = result[:4]
 
-                img_true, img_fake = result[6], result[7]
+                img_true, img_fake = result[4], result[5]
                 progress_bar.add(batch_size, values=[x for x in zip(title, log)])
                 OurGAN.write_log(self.tb, [str(e) + "/" + x for x in title], log, b)
                 if b % img_freq == 0:
