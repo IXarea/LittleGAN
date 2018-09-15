@@ -52,7 +52,7 @@ else:
                   args.img_freq, args.start)
     elif args.mode == "predict":
         # _, real_cond = data.get_generator().__next__()
-        cond = keras.utils.to_categorical(range(cond_dim), cond_dim)
+        cond = keras.utils.to_categorical(range(cond_dim), cond_dim) * 1.65 - 0.7
         cond = np.tile(cond, (cond_dim, 1))
         noise = np.random.normal(size=[cond_dim, args.noise])
         noise = np.repeat(noise, cond_dim, 0)

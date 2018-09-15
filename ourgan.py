@@ -98,12 +98,22 @@ class OurGAN:
         tf.summary.scalar("loss/g_loss", self.gen_loss)
         tf.summary.scalar("loss/d_loss", self.dis_loss)
         tf.summary.scalar("loss/u_loss", self.u_loss)
+
         tf.summary.scalar("loss/d_loss_origin", self.dis_loss_ori)
-        # tf.summary.scalar("loss/d_fake_loss", self.dis_fake[0])
-        # tf.summary.scalar("loss/d_fake_loss_c", self.dis_fake[1])
-        # tf.summary.scalar("loss/d_true_loss", self.dis_real[0])
-        # tf.summary.scalar("loss/d_true_loss_c", self.dis_real[1])
+
         tf.summary.scalar("misc/gp", gp)
+
+        def sum_dis_result(dis_result, name):
+            tf.summary.histogram("aux/%s_d" % name, dis_result[0])
+            tf.summary.histogram("aux/%s_c" % name, dis_result[1])
+            tf.summary.scalar("acc/%s_d" % name, tf.reduce_sum(dis_result[0]))
+            tf.summary.scalar("acc/%s_c" % name, tf.reduce_sum(dis_result[1]))
+
+        sum_dis_result(self.dis_real, "real")
+        sum_dis_result(self.dis_fake, "fake")
+        sum_dis_result(self.dis_wrong, "wrong")
+        sum_dis_result(self.dis_u, "u")
+
         self.merge_summary = tf.summary.merge_all()
         with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
             self.dis_updater = tf.train.AdamOptimizer(1e-4, 0.5, 0.9) \
