@@ -1,16 +1,14 @@
-import os.path
+import os
 
+import keras
+import numpy as np
 from git import Repo
 
 from config import args
-
-if args.mode != "train":
-    os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 from ourgan import OurGAN
-from utils import CelebA, combine_images, save_img
-import numpy as np
+from utils import CelebA
 
-attr = [20, 15, 39, 8, 9, 11, 17, 33, 2, 4, 5, 26]
+attr = [20, 39, 15, 8, 9, 11, 17, 33, 26]
 cond_dim = len(attr)
 channels = 3
 print("\r\nApplication Params: ", args, "\r\n")
@@ -49,9 +47,13 @@ else:
         repo = Repo(".")
         if repo.is_dirty() and args.test == 0:
             raise EnvironmentError("Git repo is Dirty! Please train after committed.")
+
         model.fit(args.batch_size, args.epoch, data, args.model_freq_batch, args.model_freq_epoch,
                   args.img_freq, args.start)
     elif args.mode == "predict":
-        real_img, real_cond = data.get_generator().__next__()
-        model.predict(real_cond)
-        save_img(combine_images(real_img))
+        # _, real_cond = data.get_generator().__next__()
+        cond = keras.utils.to_categorical(range(cond_dim), cond_dim)
+        cond = np.tile(cond, (cond_dim, 1))
+        noise = np.random.normal(size=[cond_dim, args.noise])
+        noise = np.repeat(noise, cond_dim, 0)
+        model.predict(cond, noise)

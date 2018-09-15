@@ -32,11 +32,7 @@ class OurGAN:
         self.channels = channels
         self.sess = k.get_session()
         self._setup()
-
-        self.a_noise = np.random.normal(size=[64, self.noise_dim])
-        self.a_cond = np.random.uniform(-1., 1., size=[64, self.cond_dim])
-        self.writer = tf.summary.FileWriter(session=self.sess, logdir=self.result_path, graph=self.sess.graph)
-        # self.writer.add_graph(self.generator)
+        self.writer = None
 
     @staticmethod
     def name():
@@ -58,7 +54,7 @@ class OurGAN:
 
         self._setup_layers()
         self._setup_g("G")
-        self._setup_d("D")
+        self._setup_d()
         self._setup_u_net()
         self._setup_gan("GAN")
         self._setup_train()
@@ -68,20 +64,27 @@ class OurGAN:
         self.p_fake_noise = tf.placeholder(tf.float32, shape=[None, self.noise_dim])
         self.p_real_cond = tf.placeholder(tf.float32, shape=[None, self.cond_dim])
         self.p_fake_cond = tf.placeholder(tf.float32, shape=[None, self.cond_dim])
-        self.p_wrong_cond = tf.placeholder(tf.float32, shape=[None, self.cond_dim])
-        self.p_wrong_cond = tf.placeholder(tf.float32, shape=[None, self.cond_dim])
+
         self.p_real_img = tf.placeholder(tf.float32, shape=[None, self.img_dim, self.img_dim, self.channels])
 
         self.fake_img = self.generator([self.p_fake_noise, self.p_fake_cond])
+        self.fake_img_real = self.generator([self.p_real_noise, self.p_real_cond])
 
         self.dis_fake = self.discriminator([self.fake_img, self.p_fake_cond])
-
         self.dis_real = self.discriminator([self.p_real_img, self.p_real_cond])
+        self.dis_wrong = self.discriminator([self.p_real_img, 1 - self.p_real_cond])
 
-        self.gen_loss = k.mean(k.abs(1 - self.dis_fake[0])) + k.mean(k.abs(1 - self.dis_fake[1]))
+        self.u_img = self.u_net([self.fake_img, self.p_real_cond])
+        self.dis_u = self.discriminator([self.u_img, self.p_real_cond])
 
-        self.dis_loss = k.mean(k.abs(self.dis_fake[0])) + k.mean(k.abs(self.dis_fake[1])) + k.mean(
-            k.abs(1 - self.dis_real[0])) + k.mean(k.abs(1 - self.dis_real[1]))
+        self.gen_loss = k.mean(k.abs(1 - self.dis_fake[0])) + k.mean(k.abs(1 - self.dis_fake[1])) \
+                        + 0.2 * k.mean(k.abs(self.fake_img_real - self.p_real_img))
+
+        self.dis_loss_ori = 0.5 * k.mean(k.abs(self.dis_fake[0])) \
+                            + 0.5 * k.mean(k.abs(1 - self.dis_real[0])) \
+                            + k.mean(k.abs(1 - self.dis_real[1])) + k.mean(k.abs(self.dis_wrong[1]))  # A
+        self.u_loss = k.mean(k.abs(1 - self.dis_u[0])) + k.mean(k.abs(1 - self.dis_u[1])) + \
+                      0.2 * (k.mean(k.abs(self.u_img - self.p_real_img)))
 
         alpha = k.random_uniform(shape=[k.shape(self.p_real_noise)[0], 1, 1, 1])
 
@@ -90,23 +93,25 @@ class OurGAN:
         gradients = k.gradients(self.discriminator([interp, self.p_real_cond]), [interp])[0]
         gp = tf.sqrt(tf.reduce_mean(tf.square(gradients), axis=1))
         gp = tf.reduce_mean((gp - 1.0) * 2)
-        self.dis_loss = gp + self.dis_loss
+        self.dis_loss = gp + self.dis_loss_ori
 
         tf.summary.scalar("loss/g_loss", self.gen_loss)
         tf.summary.scalar("loss/d_loss", self.dis_loss)
+        tf.summary.scalar("loss/u_loss", self.u_loss)
+        tf.summary.scalar("loss/d_loss_origin", self.dis_loss_ori)
         # tf.summary.scalar("loss/d_fake_loss", self.dis_fake[0])
         # tf.summary.scalar("loss/d_fake_loss_c", self.dis_fake[1])
         # tf.summary.scalar("loss/d_true_loss", self.dis_real[0])
         # tf.summary.scalar("loss/d_true_loss_c", self.dis_real[1])
-        tf.summary.histogram("misc/gp", gp)
+        tf.summary.scalar("misc/gp", gp)
         self.merge_summary = tf.summary.merge_all()
         with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
-            self.dis_updater = tf.train \
-                .AdamOptimizer(learning_rate=1e-4, beta1=0.5, beta2=0.9) \
+            self.dis_updater = tf.train.AdamOptimizer(1e-4, 0.5, 0.9) \
                 .minimize(self.dis_loss, var_list=self.discriminator.trainable_weights)
-            self.gen_updater = tf.train \
-                .AdamOptimizer(learning_rate=1e-4, beta1=0.5, beta2=0.9) \
+            self.gen_updater = tf.train.AdamOptimizer(1e-4, 0.5, 0.9) \
                 .minimize(self.gen_loss, var_list=self.generator.trainable_weights)
+            self.u_updater = tf.train.AdamOptimizer(2e-4, 0.5, 0.9) \
+                .minimize(self.u_loss, var_list=self.u_net.trainable_weights[12:])
 
         self.sess.run(tf.global_variables_initializer())
 
@@ -186,11 +191,10 @@ class OurGAN:
             LeakyReLU(alpha=0.2),
             Dropout(0.25)
         ]
-        self.layers["c_d"] = [Dense(8 ** 2 * 64)]
-        self.layers["c_8"] = self.layers["c_d"] + [Reshape([8, 8, 64])]
-        self.layers["c_16"] = self.layers["c_d"] + [Reshape([16, 16, 16])]
-        self.layers["c_32"] = self.layers["c_d"] + [Reshape([32, 32, 4])]
-        self.layers["c_64"] = self.layers["c_d"] + [Reshape([64, 64, 1])]
+        self.layers["c_8"] = [Dense(8 ** 2 * 64), Reshape([8, 8, 64])]
+        self.layers["c_16"] = [Dense(16 ** 2 * 32), Reshape([16, 16, 32])]
+        self.layers["c_32"] = [Dense(32 ** 2 * 16), Reshape([32, 32, 16])]
+        self.layers["c_64"] = [Dense(64 ** 2 * 8), Reshape([64, 64, 8])]
 
     def _setup_g(self, name):
 
@@ -220,7 +224,7 @@ class OurGAN:
         self.g_output = Conv2D(self.channels, kernel_size=self.kernel_size, padding='same', activation='tanh')(x)
         self.generator = Model(inputs=[self.noise_input, self.cond_input], outputs=[self.g_output], name=name)
 
-    def _setup_d(self, d_name):
+    def _setup_d(self):
         x = self.img_input
         x = OurGAN.add_sequential_layer(x, self.layers["d_128"])
         x = OurGAN.add_sequential_layer(x, self.layers["d_64"])
@@ -257,20 +261,22 @@ class OurGAN:
         d_128 = OurGAN.add_sequential_layer(x, self.layers["d_128"])
         d_64 = OurGAN.add_sequential_layer(d_128, self.layers["d_64"])
         d_32 = OurGAN.add_sequential_layer(d_64, self.layers["d_32"])
-        x = OurGAN.add_sequential_layer(d_32, self.layers["d_16"])
+        # x = OurGAN.add_sequential_layer(d_32, self.layers["d_16"])
 
-        x = OurGAN._residual_block(x, self.conv_filter[0], self.residual_kernel_size)
-        c = OurGAN.add_sequential_layer(self.cond_input, self.layers["c_8"])
-        x = Concatenate()([x, c])
-        x = OurGAN.add_sequential_layer(x, self.layers["u_g_16"])
+        # x = OurGAN._residual_block(x, self.conv_filter[0], self.residual_kernel_size)
+        # c = OurGAN.add_sequential_layer(self.cond_input, self.layers["c_8"])
+        # x = Concatenate()([x, c])
+        # x = OurGAN.add_sequential_layer(x, self.layers["u_g_16"])
 
         c = OurGAN.add_sequential_layer(self.cond_input, self.layers["c_16"])
-        x = Concatenate()([x, d_32, c])
+        x = Concatenate()([d_32, c])
         x = OurGAN.add_sequential_layer(x, self.layers["u_g_32"])
+        # out_32 = Conv2D(self.channels, kernel_size=self.kernel_size, padding='same', activation='tanh')(x)
 
         c = OurGAN.add_sequential_layer(self.cond_input, self.layers["c_32"])
         x = Concatenate()([x, d_64, c])
         x = OurGAN.add_sequential_layer(x, self.layers["u_g_64"])
+        # out_64 = Conv2D(self.channels, kernel_size=self.kernel_size, padding='same', activation='tanh')(x)
 
         c = OurGAN.add_sequential_layer(self.cond_input, self.layers["c_64"])
         x = Concatenate()([x, d_128, c])
@@ -278,7 +284,7 @@ class OurGAN:
 
         x = Conv2D(self.channels, kernel_size=self.kernel_size, padding='same', activation='tanh')(x)
 
-        self.u_net = Model([self.img_input, self.cond_input], x)
+        self.u_net = Model([self.img_input, self.cond_input], [x])
 
     def _setup_gan(self, name):
         pass
@@ -293,64 +299,16 @@ class OurGAN:
         # Disc Data
         img_true, cond_true = data_generator.__next__()
         d_noise = np.random.normal(size=(batch_size, self.noise_dim))
-        cond_fake = np.random.uniform(-1., 1., size=[batch_size, self.cond_dim])
+        cond_fake = np.random.uniform(-1., 1., size=[batch_size, self.cond_dim]).round(1)
         g_noise = np.random.normal(size=(batch_size, self.noise_dim))
-        _, _, d_loss, g_loss, summary = self.sess.run(
-            [self.dis_updater, self.gen_updater, self.dis_loss, self.gen_loss, self.merge_summary],
+
+        _, _, _, d_loss, d_loss_ori, g_loss, u_loss, summary, fake_img = self.sess.run(
+            [self.dis_updater, self.gen_updater, self.u_updater, self.dis_loss, self.dis_loss_ori, self.gen_loss,
+             self.u_loss, self.merge_summary, self.fake_img_real],
             {self.p_real_img: img_true, self.p_real_cond: cond_true, self.p_real_noise: d_noise,
              self.p_fake_noise: g_noise, self.p_fake_cond: cond_fake})
         self.writer.add_summary(summary, step)
-        return g_loss, d_loss, 0, 0, img_true, img_true
-        """
-        
-        img_fake = self.generator.predict([d_noise, cond_fake])
-
-        reverse_cond = 1 - cond_true
-
-        # Gen Data
-        gan_noise = np.random.normal(size=(batch_size, self.noise_dim))
-        gan2_noise = np.random.normal(size=(batch_size, self.noise_dim))
-        gan3_noise = np.random.normal(size=(batch_size, self.noise_dim))
-        g_noise = np.random.normal(size=(batch_size, self.noise_dim))
-        # Targets
-        fake_target = np.zeros(batch_size).astype(float)
-        true_target = np.ones(batch_size).astype(float)
-        g_target = np.ones((batch_size, 1)).astype(float)
-
-        # Train
-
-        d_loss_fake = self.discriminator.train_on_batch([img_fake, cond_fake], [fake_target, fake_target])
-        gan_loss_1 = self.gan.train_on_batch([gan_noise, cond_true], [g_target, g_target])
-        # u_loss_1 = self.u_net.train_on_batch([np.clip(img_true - img_true, -1, 1), cond_true], img_true)
-
-        d_loss_true = self.discriminator.train_on_batch([img_true, cond_true], [true_target, true_target])
-        gan_loss_2 = self.gan.train_on_batch([gan2_noise, cond_true], [g_target, g_target])
-        # g_loss = self.generator.train_on_batch([g_noise, cond_true], img_true)
-
-        d_loss_cfake = self.discriminator.train_on_batch([img_true, reverse_cond], [true_target, fake_target])
-        gan_loss_3 = self.gan.train_on_batch([gan3_noise, cond_true], [g_target, g_target])
-        # u_loss_2 = self.u_net.train_on_batch([np.clip(img_fake - img_true, -1, 1), cond_true], img_true)
-
-        # Calculate
-        d_loss = (d_loss_true[0] + d_loss_fake[0] + d_loss_cfake[0]) / 3
-        d_acc = (d_loss_true[1] + d_loss_fake[1] + d_loss_cfake[1]) / 3
-        gan_loss_d = (gan_loss_1[0] + gan_loss_2[0] + gan_loss_3[0]) / 2
-        gan_loss_c = (gan_loss_1[1] + gan_loss_2[0] + gan_loss_3[0]) / 2
-        gan_loss = (gan_loss_c + gan_loss_d) / 2
-        # u_loss = (u_loss_1 + u_loss_2) / 2
-        u_loss, g_loss = 0, 0
-        rate = gan_loss / d_loss
-        if rate > 2:
-            k.set_value(self.gan.optimizer.lr, 3e-4)
-            k.set_value(self.discriminator.optimizer.lr, 2e-4)
-        elif rate < 0.5:
-            k.set_value(self.gan.optimizer.lr, 2e-4)
-            k.set_value(self.discriminator.optimizer.lr, 3e-4)
-        else:
-            k.set_value(self.gan.optimizer.lr, 2e-4)
-            k.set_value(self.discriminator.optimizer.lr, 2e-4)
-        return g_loss, gan_loss_d, gan_loss_c, d_loss, d_acc, u_loss, img_true, img_fake
-        """
+        return g_loss, d_loss, d_loss_ori, u_loss, img_true, fake_img, cond_true
 
     def plot(self):
         models = {"G": self.generator, "D": self.discriminator, "U-NET": self.u_net}
@@ -374,24 +332,34 @@ class OurGAN:
         batches = data.batches
         repo = Repo(os.path.dirname(os.path.realpath(__file__)))
         repo.archive(open(self.result_path + "/program.tar", "wb"))
-        title = ["LossG", "LossD", "AccD", "LossU"]
+        title = ["LossG", "LossD", "LossDo", "LossU"]
+        self.writer = tf.summary.FileWriter(session=self.sess, logdir=self.result_path, graph=self.sess.graph)
         for e in range(start_epoch, 1 + epoch):
             progress_bar = Progbar(batches * batch_size)
+            a_noise = np.random.normal(size=[64, self.noise_dim])
+            a_cond = np.random.uniform(-1., 1., size=[64, self.cond_dim]).round(1)
+            with open(os.path.join(self.result_path, "ev.log"), "a") as f:
+                print("\r\nCondition Label:\r\n", data.label, "\r\nEpoch %d Condition:\r\n" % e, a_cond,
+                      "\r\n", file=f)
             for b in range(1, 1 + batches):
-                result = self._train(batch_size, data_generator, e * batches+b)
+                result = self._train(batch_size, data_generator, e * batches + b)
                 log = result[:4]
 
-                img_true, img_fake = result[4], result[5]
+                img_true, img_fake, cond_true = result[4], result[5], result[6]
                 progress_bar.add(batch_size, values=[x for x in zip(title, log)])
                 if b % img_freq == 0:
                     utils.save_img(utils.combine_images(img_true),
                                    os.path.join(self.result_path, "real.png"))
                     utils.save_img(utils.combine_images(img_fake),
                                    os.path.join(self.result_path, "gen_img/{}-{}.png".format(e, b)))
-                    utils.save_img(utils.combine_images(self.generator.predict([self.a_noise, self.a_cond])),
+                    utils.save_img(utils.combine_images(self.generator.predict([a_noise, a_cond])),
                                    os.path.join(self.result_path, "ev_img/{}-{}.png").format(e, b))
-                    utils.save_img(utils.combine_images(self.u_net.predict([img_fake, self.a_cond])),
+                    utils.save_img(utils.combine_images(self.u_net.predict([img_fake, a_cond])),
                                    os.path.join(self.result_path, "ev_img/u-{}-{}.png").format(e, b))
+                    with open(os.path.join(self.result_path, "train_cond.log"), "a") as f:
+                        print("\r\nCondition Label:\r\n", data.label, "\r\nEpoch %d Batch %d Condition:\r\n" % (e, b),
+                              a_cond,
+                              "\r\n", file=f)
                 if b % model_freq_batch == 0:
                     utils.save_weights({"G": self.generator, "D": self.discriminator, "U-Net": self.u_net},
                                        os.path.join(self.result_path, "model"))

@@ -53,13 +53,13 @@ def combine_images(generated_images):
 class CelebA:
 
     def __init__(self, path, attr_file, batch_size, shape, img_ext=".jpg", attr_filter=None):
-        self.img_list = []
+        self._img_list = []
         for dir_name in path:
-            self.img_list += glob(dir_name + "/*" + img_ext)
-        self.attributes_list = self.get_attr_list(attr_file, attr_filter)
+            self._img_list += glob(dir_name + "/*" + img_ext)
+        self._attributes_list = self._get_attr_list(attr_file, attr_filter)
         self.shape = shape
         self.batch_size = batch_size
-        self.batches = int(len(self.img_list) / batch_size)
+        self.batches = int(len(self._img_list) / batch_size)
         self.all_label = ["有短髭", "柳叶眉", "有魅力", "有眼袋", "秃头", "有刘海", "大嘴唇", "大鼻子", "黑发", "金发", "睡眼惺松", "棕发", "浓眉",
                           "丰满", "双下巴", "眼镜", "山羊胡", "白发", "浓妆", "高颧骨", "男性", "嘴轻微张开", "八字胡", "眯缝眼", "完全没有胡子", "鹅蛋脸",
                           "白皮肤", "尖鼻子", "发际线高的", "脸红的", "有鬓脚", "微笑", "直发", "卷发", "戴耳环", "戴帽子", "涂口红", "戴项链", "戴领带",
@@ -68,14 +68,14 @@ class CelebA:
 
     def get_generator(self):
         while True:
-            random.shuffle(self.img_list)
+            random.shuffle(self._img_list)
             x, y = [], []
             i = 0
-            for item in self.img_list:
-                img = self.get_img_array(item)
+            for item in self._img_list:
+                img = self._get_img_array(item)
                 img_id = int(os.path.splitext(os.path.basename(item))[0]) - 1
                 x.append(img)
-                attr = self.attributes_list[img_id]
+                attr = self._attributes_list[img_id]
                 y.append(attr)
                 i += 1
                 if i == self.batch_size:
@@ -83,7 +83,7 @@ class CelebA:
                     x, y = [], []
                     i = 0
 
-    def get_img_array(self, img_path):
+    def _get_img_array(self, img_path):
         im = Image.open(img_path)
         # im.thumbnail((self.shape[0], self.shape[1]))
         if self.shape[2] == 1:
@@ -92,7 +92,7 @@ class CelebA:
         return img
 
     @staticmethod
-    def get_attr_list(attr_file, attr_filter):
+    def _get_attr_list(attr_file, attr_filter):
         attributes_list_raw = open(attr_file).read().splitlines()
         attributes_list = []
         for item in attributes_list_raw:
