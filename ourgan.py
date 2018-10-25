@@ -10,7 +10,7 @@ from keras.layers import Add, Input, Dense, Reshape, Conv2D, Flatten, LeakyReLU,
 from keras.layers.merge import Concatenate
 from keras.models import Model
 from keras.optimizers import Adam
-from keras.utils import Progbar
+from keras.utils import Progbar, multi_gpu_model
 from keras_contrib.layers import InstanceNormalization
 
 import utils
@@ -33,6 +33,10 @@ class OurGAN:
         self.sess = k.get_session()
         self._setup()
         self.writer = None
+        self.train_generator = self.generator
+        self.train_discriminator = self.discriminator
+        self.train_u_net = self.u_net
+        self.train_setup = False
 
     @staticmethod
     def name():
@@ -57,7 +61,6 @@ class OurGAN:
         self._setup_d()
         self._setup_u_net()
         self._setup_gan("GAN")
-        self._setup_train()
 
     def _setup_train(self):
         self.p_real_noise = tf.placeholder(tf.float32, shape=[None, self.noise_dim])
@@ -67,30 +70,29 @@ class OurGAN:
 
         self.p_real_img = tf.placeholder(tf.float32, shape=[None, self.img_dim, self.img_dim, self.channels])
 
-        self.fake_img = self.generator([self.p_fake_noise, self.p_fake_cond])
-        self.fake_img_real = self.generator([self.p_real_noise, self.p_real_cond])
+        self.fake_img = self.train_generator([self.p_fake_noise, self.p_fake_cond])
+        self.fake_img_real = self.train_generator([self.p_real_noise, self.p_real_cond])
 
-        self.dis_fake = self.discriminator([self.fake_img, self.p_fake_cond])
-        self.dis_real = self.discriminator([self.p_real_img, self.p_real_cond])
-        self.dis_wrong = self.discriminator([self.p_real_img, 1 - self.p_real_cond])
+        self.dis_fake = self.train_discriminator([self.fake_img, self.p_fake_cond])
+        self.dis_real = self.train_discriminator([self.p_real_img, self.p_real_cond])
+        self.dis_wrong = self.train_discriminator([self.p_real_img, 1 - self.p_real_cond])
 
-        self.u_img = self.u_net([self.fake_img, self.p_real_cond])
-        self.dis_u = self.discriminator([self.u_img, self.p_real_cond])
+        self.u_img = self.train_u_net([self.fake_img, self.p_real_cond])
+        self.dis_u = self.train_discriminator([self.u_img, self.p_real_cond])
 
-        self.gen_loss = k.mean(k.abs(1 - self.dis_fake[0])) + k.mean(k.abs(1 - self.dis_fake[1])) \
-                        + 0.2 * k.mean(k.abs(self.fake_img_real - self.p_real_img))
+        self.gen_loss = k.mean(k.abs(1 - self.dis_fake[0])) + k.mean(k.abs(1 - self.dis_fake[1])) + 0.2 * k.mean(
+            k.abs(self.fake_img_real - self.p_real_img))
 
-        self.dis_loss_ori = 0.5 * k.mean(k.abs(self.dis_fake[0])) \
-                            + 0.5 * k.mean(k.abs(1 - self.dis_real[0])) \
-                            + k.mean(k.abs(1 - self.dis_real[1])) + k.mean(k.abs(self.dis_wrong[1]))  # A
-        self.u_loss = k.mean(k.abs(1 - self.dis_u[0])) + k.mean(k.abs(1 - self.dis_u[1])) + \
-                      0.2 * (k.mean(k.abs(self.u_img - self.p_real_img)))
+        self.dis_loss_ori = 0.5 * k.mean(k.abs(self.dis_fake[0])) + 0.5 * k.mean(k.abs(1 - self.dis_real[0])) + k.mean(
+            k.abs(1 - self.dis_real[1])) + k.mean(k.abs(self.dis_wrong[1]))
+        self.u_loss = k.mean(k.abs(1 - self.dis_u[0])) + k.mean(k.abs(1 - self.dis_u[1])) + 0.2 * (
+            k.mean(k.abs(self.u_img - self.p_real_img)))
 
         alpha = k.random_uniform(shape=[k.shape(self.p_real_noise)[0], 1, 1, 1])
 
         interp = alpha * self.p_real_img + (1 - alpha) * self.fake_img
 
-        gradients = k.gradients(self.discriminator([interp, self.p_real_cond]), [interp])[0]
+        gradients = k.gradients(self.train_discriminator([interp, self.p_real_cond]), [interp])[0]
         gp = tf.sqrt(tf.reduce_mean(tf.square(gradients), axis=1))
         gp = tf.reduce_mean((gp - 1.0) * 2)
         self.dis_loss = gp + self.dis_loss_ori
@@ -117,11 +119,11 @@ class OurGAN:
         self.merge_summary = tf.summary.merge_all()
         with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
             self.dis_updater = tf.train.AdamOptimizer(1e-4, 0.5, 0.9) \
-                .minimize(self.dis_loss, var_list=self.discriminator.trainable_weights)
+                .minimize(self.dis_loss, var_list=self.train_discriminator.trainable_weights)
             self.gen_updater = tf.train.AdamOptimizer(1e-4, 0.5, 0.9) \
-                .minimize(self.gen_loss, var_list=self.generator.trainable_weights)
+                .minimize(self.gen_loss, var_list=self.train_generator.trainable_weights)
             self.u_updater = tf.train.AdamOptimizer(2e-4, 0.5, 0.9) \
-                .minimize(self.u_loss, var_list=self.u_net.trainable_weights[12:])
+                .minimize(self.u_loss, var_list=self.train_u_net.trainable_weights[12:])
 
         self.sess.run(tf.global_variables_initializer())
 
@@ -333,11 +335,16 @@ class OurGAN:
                 keras.utils.plot_model(
                     models[item], to_file=self.result_path + "/%s.png" % item, show_shapes=True)
 
-    def fit(self, batch_size, epoch, data, model_freq_batch, model_freq_epoch, img_freq, start_epoch):
+    def fit(self, batch_size, epoch, data, model_freq_batch, model_freq_epoch, img_freq, start_epoch, gpu_list):
         """
         训练方法
         """
-
+        if gpu_list.__len__ > 1:
+            self.train_generator = multi_gpu_model(self.generator, gpu_list)
+            self.train_discriminator = multi_gpu_model(self.discriminator, gpu_list)
+            self.train_u_net = multi_gpu_model(self.u_net, gpu_list)
+        if not self.train_setup:
+            self._setup_train()
         data_generator = data.get_generator()
         batches = data.batches
         repo = Repo(os.path.dirname(os.path.realpath(__file__)))
@@ -376,7 +383,8 @@ class OurGAN:
             if e % model_freq_epoch == 0:
                 utils.save_weights(
                     {"G-" + str(e): self.generator, "D-" + str(e): self.discriminator, "U-Net-" + str(e): self.u_net},
-                    os.path.join(self.result_path, "model"))
+                    os.path.join(self.result_path, "model")
+                )
 
     def predict(self, condition, noise=None, labels=None):
         batch_size = condition.shape[0]
