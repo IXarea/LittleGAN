@@ -1,1 +1,1 @@
-# cDCGAN for CelebA
+# a gan for CelebA
