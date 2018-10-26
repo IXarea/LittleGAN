@@ -339,7 +339,7 @@ class OurGAN:
         """
         训练方法
         """
-        if gpu_list.__len__ > 1:
+        if gpu_list.__len__() > 1:
             self.train_generator = multi_gpu_model(self.generator, gpu_list)
             self.train_discriminator = multi_gpu_model(self.discriminator, gpu_list)
             self.train_u_net = multi_gpu_model(self.u_net, gpu_list)
