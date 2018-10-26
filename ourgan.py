@@ -6,7 +6,7 @@ import keras.backend as k
 import numpy as np
 import tensorflow as tf
 from git import Repo
-from keras.layers import Add, Input, Dense, Reshape, Conv2D, Flatten, LeakyReLU, Dropout, Conv2DTranspose
+from keras.layers import Input, Dense, Reshape, Conv2D, Flatten, LeakyReLU, Dropout, Conv2DTranspose
 from keras.layers.merge import Concatenate
 from keras.models import Model
 from keras.optimizers import Adam
@@ -14,6 +14,7 @@ from keras.utils import Progbar, multi_gpu_model
 from keras_contrib.layers import InstanceNormalization
 
 import utils
+from helper import add_sequential_layer
 
 
 class OurGAN:
@@ -37,10 +38,6 @@ class OurGAN:
         self.train_discriminator = self.discriminator
         self.train_u_net = self.u_net
         self.train_setup = False
-
-    @staticmethod
-    def name():
-        return "OurGAN"
 
     def _setup(self):
         self.g_opt = Adam(2e-4, 0.8)
@@ -126,78 +123,79 @@ class OurGAN:
                 .minimize(self.u_loss, var_list=self.train_u_net.trainable_weights[12:])
 
         self.sess.run(tf.global_variables_initializer())
+        self.train_setup = True
 
     def _setup_layers(self):
         self.layers = {}
         self.conv_filter = [512, 512, 256, 128, 64]
         # Out:16*16*512
-        self.layers["g_16"] = [
+        self.layers["g_8_16"] = [
             Conv2DTranspose(self.conv_filter[1], kernel_size=self.kernel_size, strides=2, padding='same'),
             InstanceNormalization(),
             LeakyReLU(alpha=0.2)
         ]
-        self.layers["g_32"] = [
+        self.layers["g_16_32"] = [
             Conv2DTranspose(self.conv_filter[2], kernel_size=self.kernel_size, strides=2, padding='same'),
             InstanceNormalization(),
             LeakyReLU(alpha=0.2)
         ]
-        self.layers["g_64"] = [
+        self.layers["g_32_64"] = [
             Conv2DTranspose(self.conv_filter[3], kernel_size=self.kernel_size, strides=2, padding='same'),
             InstanceNormalization(),
             LeakyReLU(alpha=0.2)
         ]
         # Out：128*128*64
-        self.layers["g_128"] = [
+        self.layers["g_64_128"] = [
             Conv2DTranspose(self.conv_filter[4], kernel_size=self.kernel_size, strides=2, padding='same'),
             InstanceNormalization(),
             LeakyReLU(alpha=0.2)
         ]
 
-        self.layers["u_g_16"] = [
+        self.layers["ug_8_16"] = [
             Conv2DTranspose(self.conv_filter[1], kernel_size=self.kernel_size, strides=2, padding='same'),
             InstanceNormalization(),
             LeakyReLU(alpha=0.2)
         ]
-        self.layers["u_g_32"] = [
+        self.layers["ug_16_32"] = [
             Conv2DTranspose(self.conv_filter[2], kernel_size=self.kernel_size, strides=2, padding='same'),
             InstanceNormalization(),
             LeakyReLU(alpha=0.2)
         ]
-        self.layers["u_g_64"] = [
+        self.layers["ug_32_64"] = [
             Conv2DTranspose(self.conv_filter[3], kernel_size=self.kernel_size, strides=2, padding='same'),
             InstanceNormalization(),
             LeakyReLU(alpha=0.2)
         ]
         # Out：128*128*64
-        self.layers["u_g_128"] = [
+        self.layers["ug_64_128"] = [
             Conv2DTranspose(self.conv_filter[4], kernel_size=self.kernel_size, strides=2, padding='same'),
             InstanceNormalization(),
             LeakyReLU(alpha=0.2)
         ]
 
         # Out:64*64*128
-        self.layers["d_128"] = [
+        self.layers["d_128_64"] = [
             Conv2D(self.conv_filter[3], kernel_size=self.kernel_size, strides=2, padding='same'),
             InstanceNormalization(),
             LeakyReLU(alpha=0.2),
             Dropout(0.25)
         ]
         # Out:32*32*256
-        self.layers["d_64"] = [
+        self.layers["d_64_32"] = [
             Conv2D(self.conv_filter[2], kernel_size=self.kernel_size, strides=2, padding='same'),
             InstanceNormalization(),
             LeakyReLU(alpha=0.2),
             Dropout(0.25)
         ]
         # Out:16*16*512
-        self.layers["d_32"] = [
+        self.layers["d_32_16"] = [
             Conv2D(self.conv_filter[1], kernel_size=self.kernel_size, strides=2, padding='same'),
             InstanceNormalization(),
             LeakyReLU(alpha=0.2),
             Dropout(0.25)
         ]
         # Out:8*8*512
-        self.layers["d_16"] = [
+        self.layers["d_16_8"] = [
             Conv2D(self.conv_filter[0], kernel_size=self.kernel_size, strides=2, padding='same'),
             InstanceNormalization(),
             LeakyReLU(alpha=0.2),
@@ -217,31 +215,31 @@ class OurGAN:
         x = Reshape([self.init_dim, self.init_dim, self.conv_filter[0]])(x)
         x = InstanceNormalization()(x)
 
-        c = OurGAN.add_sequential_layer(self.cond_input, self.layers["c_8"])
+        c = add_sequential_layer(self.cond_input, self.layers["c_8"])
         x = Concatenate()([x, c])
-        x = OurGAN.add_sequential_layer(x, self.layers["g_16"])
+        x = add_sequential_layer(x, self.layers["g_8_16"])
 
-        c = OurGAN.add_sequential_layer(self.cond_input, self.layers["c_16"])
+        c = add_sequential_layer(self.cond_input, self.layers["c_16"])
         x = Concatenate()([x, c])
-        x = OurGAN.add_sequential_layer(x, self.layers["g_32"])
+        x = add_sequential_layer(x, self.layers["g_16_32"])
         # 64x64
-        c = OurGAN.add_sequential_layer(self.cond_input, self.layers["c_32"])
+        c = add_sequential_layer(self.cond_input, self.layers["c_32"])
         x = Concatenate()([x, c])
-        x = OurGAN.add_sequential_layer(x, self.layers["g_64"])
+        x = add_sequential_layer(x, self.layers["g_32_64"])
         # 128x128
-        c = OurGAN.add_sequential_layer(self.cond_input, self.layers["c_64"])
+        c = add_sequential_layer(self.cond_input, self.layers["c_64"])
         x = Concatenate()([x, c])
-        x = OurGAN.add_sequential_layer(x, self.layers["g_128"])
+        x = add_sequential_layer(x, self.layers["g_64_128"])
 
         self.g_output = Conv2D(self.channels, kernel_size=self.kernel_size, padding='same', activation='tanh')(x)
         self.generator = Model(inputs=[self.noise_input, self.cond_input], outputs=[self.g_output], name=name)
 
     def _setup_d(self):
         x = self.img_input
-        x = OurGAN.add_sequential_layer(x, self.layers["d_128"])
-        x = OurGAN.add_sequential_layer(x, self.layers["d_64"])
-        x = OurGAN.add_sequential_layer(x, self.layers["d_32"])
-        x = OurGAN.add_sequential_layer(x, self.layers["d_16"])
+        x = add_sequential_layer(x, self.layers["d_128_64"])
+        x = add_sequential_layer(x, self.layers["d_64_32"])
+        x = add_sequential_layer(x, self.layers["d_32_16"])
+        x = add_sequential_layer(x, self.layers["d_16_8"])
 
         x = Flatten()(x)
         self.d_output = Dense(1)(x)
@@ -251,48 +249,32 @@ class OurGAN:
 
         self.discriminator = Model(inputs=[self.img_input, self.cond_input], outputs=[self.d_output, self.dc_output])
 
-    @staticmethod
-    def add_sequential_layer(layer_in, layers_add):
-        layer_out = layer_in
-        for layer in layers_add:
-            layer_out = layer(layer_out)
-        return layer_out
-
-    @staticmethod
-    def _residual_block(layer, n_conv, kernel):
-        x = Conv2D(n_conv, kernel_size=kernel, strides=1, padding='same')(layer)
-        x = InstanceNormalization()(x)
-        x = LeakyReLU(alpha=0.2)(x)
-        x = Conv2D(int(layer.shape[-1]), kernel_size=kernel, strides=1, padding='same')(x)
-        x = Add()([layer, x])
-        return x
-
     def _setup_u_net(self):
 
         x = self.img_input
-        d_128 = OurGAN.add_sequential_layer(x, self.layers["d_128"])
-        d_64 = OurGAN.add_sequential_layer(d_128, self.layers["d_64"])
-        d_32 = OurGAN.add_sequential_layer(d_64, self.layers["d_32"])
-        # x = OurGAN.add_sequential_layer(d_32, self.layers["d_16"])
+        d_64 = add_sequential_layer(x, self.layers["d_128_64"])
+        d_32 = add_sequential_layer(d_64, self.layers["d_64_32"])
+        d_16 = add_sequential_layer(d_32, self.layers["d_32_16"])
+        # x = OurGAN.add_sequential_layer(d_16, self.layers["d_16_8"])
 
         # x = OurGAN._residual_block(x, self.conv_filter[0], self.residual_kernel_size)
         # c = OurGAN.add_sequential_layer(self.cond_input, self.layers["c_8"])
         # x = Concatenate()([x, c])
-        # x = OurGAN.add_sequential_layer(x, self.layers["u_g_16"])
+        # x = OurGAN.add_sequential_layer(x, self.layers["ug_8_16"])
 
-        c = OurGAN.add_sequential_layer(self.cond_input, self.layers["c_16"])
-        x = Concatenate()([d_32, c])
-        x = OurGAN.add_sequential_layer(x, self.layers["u_g_32"])
+        c = add_sequential_layer(self.cond_input, self.layers["c_16"])
+        x = Concatenate()([d_16, c])
+        x = add_sequential_layer(x, self.layers["ug_16_32"])
         # out_32 = Conv2D(self.channels, kernel_size=self.kernel_size, padding='same', activation='tanh')(x)
 
-        c = OurGAN.add_sequential_layer(self.cond_input, self.layers["c_32"])
-        x = Concatenate()([x, d_64, c])
-        x = OurGAN.add_sequential_layer(x, self.layers["u_g_64"])
+        c = add_sequential_layer(self.cond_input, self.layers["c_32"])
+        x = Concatenate()([x, d_32, c])
+        x = add_sequential_layer(x, self.layers["ug_32_64"])
         # out_64 = Conv2D(self.channels, kernel_size=self.kernel_size, padding='same', activation='tanh')(x)
 
-        c = OurGAN.add_sequential_layer(self.cond_input, self.layers["c_64"])
-        x = Concatenate()([x, d_128, c])
-        x = OurGAN.add_sequential_layer(x, self.layers["u_g_128"])
+        c = add_sequential_layer(self.cond_input, self.layers["c_64"])
+        x = Concatenate()([x, d_64, c])
+        x = add_sequential_layer(x, self.layers["ug_64_128"])
 
         x = Conv2D(self.channels, kernel_size=self.kernel_size, padding='same', activation='tanh')(x)
 

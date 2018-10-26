@@ -3,3 +3,4 @@ tensorflow-gpu==1.11.*
 Pillow
 git+https://github.com/keras-team/keras-contrib.git
 GitPython
+numpy

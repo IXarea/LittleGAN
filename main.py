@@ -28,7 +28,7 @@ if os.path.isfile(u_file):
     print("\r\n Loading Exist U-Net Weight")
     model.u_net.load_weights(u_file)
 print("\r\nUsing GPUs: ", args.gpu, "\r\n")
-if args.attr_path is None or args.img_path is None:
+if args.attr_path is None or args.img_path.__len__() is 0:
     if args.mode == "train" or args.mode == "predict":
         raise ValueError("params error!")
     elif args.mode == "manual-predict":

@@ -7,7 +7,7 @@ parser.add_argument("-b", "--batch_size", type=int, required=False, help="batch 
 
 parser.add_argument("-m", "--mode", type=str, required=False, help="is train", default="train")
 parser.add_argument("-n", "--name", type=str, required=False, help="training name", default="default")
-parser.add_argument("-i", "--img_path", type=str, required=False, help="image path split with ','")
+parser.add_argument("-i", "--img_path", type=str, required=False, help="image path split with ','", default="")
 parser.add_argument("-a", "--attr_path", type=str, required=False, help="attr file path")
 
 parser.add_argument("--epoch", type=int, required=False, help="epoch times", default=100)
