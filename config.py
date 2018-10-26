@@ -11,7 +11,7 @@ parser.add_argument("-i", "--img_path", type=str, required=False, help="image pa
 parser.add_argument("-a", "--attr_path", type=str, required=False, help="attr file path")
 
 parser.add_argument("--epoch", type=int, required=False, help="epoch times", default=100)
-parser.add_argument("--gpu", type=str, required=False, help="gpu ids", default="0")
+parser.add_argument("--gpu", type=str, required=False, help="gpu ids", default="-1")
 parser.add_argument("--start", type=int, required=False, help="start epoch times", default=1)
 parser.add_argument("--plot", type=int, required=False, help="print the network info", default=0)
 parser.add_argument("--test", type=int, required=False, help="ignore git repo is dirty", default=0)
@@ -27,3 +27,7 @@ if args.mode != "train":
     os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 else:
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
+
+args.img_path = args.img_path.split(",")
+_gpu = args.gpu.split(",")
+args.gpu = [int(item) for item in _gpu if item.isnumeric() and int(item) >= 0]
