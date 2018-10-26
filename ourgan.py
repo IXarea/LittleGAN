@@ -127,7 +127,7 @@ class OurGAN:
 
     def _setup_layers(self):
         self.layers = {}
-        self.conv_filter = [512, 512, 256, 128, 64]
+        self.conv_filter = [384, 192, 96, 96, 48]
         # Out:16*16*512
         self.layers["g_8_16"] = [
             Conv2DTranspose(self.conv_filter[1], kernel_size=self.kernel_size, strides=2, padding='same'),
@@ -308,12 +308,13 @@ class OurGAN:
         models = {"G": self.generator, "D": self.discriminator, "U-NET": self.u_net}
         with open(self.result_path + "/models.txt", "w") as f:
             def print_fn(content):
-                print(content + "\n", file=f)
+                print(content, file=f)
 
             for item in models:
                 pad_len = int(0.5 * (53 - item.__len__()))
-                f.write("\r\n\r\n" + "=" * pad_len + "   Model: " + item + "  " + "=" * pad_len + "\r")
+                print_fn("=" * pad_len + "   Model: " + item + "  " + "=" * pad_len)
                 models[item].summary(print_fn=print_fn)
+                print_fn("\n")
                 keras.utils.plot_model(
                     models[item], to_file=self.result_path + "/%s.png" % item, show_shapes=True)
 
@@ -322,9 +323,9 @@ class OurGAN:
         训练方法
         """
         if gpu_list.__len__() > 1:
-            self.train_generator = multi_gpu_model(self.generator, gpu_list)
-            self.train_discriminator = multi_gpu_model(self.discriminator, gpu_list)
-            self.train_u_net = multi_gpu_model(self.u_net, gpu_list)
+            self.train_generator = multi_gpu_model(self.generator)
+            self.train_discriminator = multi_gpu_model(self.discriminator)
+            self.train_u_net = multi_gpu_model(self.u_net)
         if not self.train_setup:
             self._setup_train()
         data_generator = data.get_generator()
