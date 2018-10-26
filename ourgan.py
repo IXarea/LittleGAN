@@ -215,16 +215,16 @@ class OurGAN:
         x = Reshape([self.init_dim, self.init_dim, self.conv_filter[0]])(x)
         x = InstanceNormalization()(x)
 
-        c = add_sequential_layer(self.cond_input, self.layers["c_8"])
-        x = Concatenate()([x, c])
+        # c = add_sequential_layer(self.cond_input, self.layers["c_8"])
+        # x = Concatenate()([x, c])
         x = add_sequential_layer(x, self.layers["g_8_16"])
 
         c = add_sequential_layer(self.cond_input, self.layers["c_16"])
         x = Concatenate()([x, c])
         x = add_sequential_layer(x, self.layers["g_16_32"])
         # 64x64
-        c = add_sequential_layer(self.cond_input, self.layers["c_32"])
-        x = Concatenate()([x, c])
+        # c = add_sequential_layer(self.cond_input, self.layers["c_32"])
+        # x = Concatenate()([x, c])
         x = add_sequential_layer(x, self.layers["g_32_64"])
         # 128x128
         c = add_sequential_layer(self.cond_input, self.layers["c_64"])
@@ -267,8 +267,8 @@ class OurGAN:
         x = add_sequential_layer(x, self.layers["ug_16_32"])
         # out_32 = Conv2D(self.channels, kernel_size=self.kernel_size, padding='same', activation='tanh')(x)
 
-        c = add_sequential_layer(self.cond_input, self.layers["c_32"])
-        x = Concatenate()([x, d_32, c])
+        # c = add_sequential_layer(self.cond_input, self.layers["c_32"])
+        # x = Concatenate()([x, d_32, c])
         x = add_sequential_layer(x, self.layers["ug_32_64"])
         # out_64 = Conv2D(self.channels, kernel_size=self.kernel_size, padding='same', activation='tanh')(x)
 
