@@ -240,6 +240,16 @@ class OurGAN:
 
         self.g_output = Conv2D(self.channels, kernel_size=self.kernel_size, padding='same', activation='tanh')(x)
         self.generator = Model(inputs=[self.noise_input, self.cond_input], outputs=[self.g_output], name=name)
+        # Todo:Change here when modified the model
+        self.generator_train_list = [
+            [0, 1, 2, 3],  # Input Image Dense
+            [4, 5, 6, 7],  # 8->16
+            [8, 9, 18, 19],  # Input Condition Dense
+            [10, 11, 12, 13],  # 16->32
+            [14, 15, 16, 17],  # 32->64
+            [20, 21, 22, 23],  # 64->128
+            [24, 25]  # Output Conv
+        ]
 
     def _setup_d(self):
         x = self.img_input
@@ -254,6 +264,13 @@ class OurGAN:
         self.dc_output = Dense(1, name="d_cond_output")(x)  # Output if the image is comfort the condition
 
         self.discriminator = Model(inputs=[self.img_input, self.cond_input], outputs=[self.d_output, self.dc_output])
+        self.discriminator_train_list = [
+            [0, 1, 2, 3],  # 128->64
+            [4, 5, 6, 7],  # 64->32
+            [8, 9, 10, 11],  # 32->16
+            [12, 13, 14, 15],  # 16->8
+            [16, 17, 18, 19],  # Output Dense
+        ]
 
     def _setup_u_net(self):
 
@@ -285,6 +302,13 @@ class OurGAN:
         x = Conv2D(self.channels, kernel_size=self.kernel_size, padding='same', activation='tanh')(x)
 
         self.u_net = Model([self.img_input, self.cond_input], [x])
+        self.u_net_train_list = [
+            [0, 1, 10, 11],  # Input Cond
+            [2, 3, 4, 5],  # 16->32
+            [6, 7, 8, 9],  # 32->64
+            [12, 13, 14, 15],  # 32->16
+            [16, 17],  # Output Dense
+        ]
 
     def _setup_gan(self, name):
         pass
