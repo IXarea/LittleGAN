@@ -1,7 +1,6 @@
 import math
 import os
 
-import keras
 import keras.backend as k
 import numpy as np
 import tensorflow as tf
@@ -10,7 +9,7 @@ from keras.layers import Input, Dense, Reshape, Conv2D, Flatten, LeakyReLU, Drop
 from keras.layers.merge import Concatenate
 from keras.models import Model
 from keras.optimizers import Adam
-from keras.utils import Progbar, multi_gpu_model
+from keras.utils import Progbar, multi_gpu_model, plot_model
 from keras_contrib.layers import InstanceNormalization
 
 import utils
@@ -130,81 +129,89 @@ class OurGAN:
         self.conv_filter = [384, 192, 96, 96, 48]
         # Out:16*16*512
         self.layers["g_8_16"] = [
-            Conv2DTranspose(self.conv_filter[1], kernel_size=self.kernel_size, strides=2, padding='same'),
-            InstanceNormalization(),
-            LeakyReLU(alpha=0.2)
+            Conv2DTranspose(self.conv_filter[1], kernel_size=self.kernel_size, strides=2, padding='same',
+                            name="g_8_16_conv"),
+            InstanceNormalization(name="g_8_16_norm"),
+            LeakyReLU(alpha=0.2, name="g_8_16_relu")
         ]
         self.layers["g_16_32"] = [
-            Conv2DTranspose(self.conv_filter[2], kernel_size=self.kernel_size, strides=2, padding='same'),
-            InstanceNormalization(),
-            LeakyReLU(alpha=0.2)
+            Conv2DTranspose(self.conv_filter[2], kernel_size=self.kernel_size, strides=2, padding='same',
+                            name="g_16_32_conv"),
+            InstanceNormalization(name="g_16_32_norm"),
+            LeakyReLU(alpha=0.2, name="g_16_32_relu")
         ]
         self.layers["g_32_64"] = [
-            Conv2DTranspose(self.conv_filter[3], kernel_size=self.kernel_size, strides=2, padding='same'),
-            InstanceNormalization(),
-            LeakyReLU(alpha=0.2)
+            Conv2DTranspose(self.conv_filter[3], kernel_size=self.kernel_size, strides=2, padding='same',
+                            name="g_32_64_conv"),
+            InstanceNormalization(name="g_32_64_norm"),
+            LeakyReLU(alpha=0.2, name="g_32_64_relu")
         ]
         # Out：128*128*64
         self.layers["g_64_128"] = [
-            Conv2DTranspose(self.conv_filter[4], kernel_size=self.kernel_size, strides=2, padding='same'),
-            InstanceNormalization(),
-            LeakyReLU(alpha=0.2)
+            Conv2DTranspose(self.conv_filter[4], kernel_size=self.kernel_size, strides=2, padding='same',
+                            name="g_64_128_conv"),
+            InstanceNormalization(name="g_64_128_norm"),
+            LeakyReLU(alpha=0.2, name="g_64_128_relu")
         ]
 
         self.layers["ug_8_16"] = [
-            Conv2DTranspose(self.conv_filter[1], kernel_size=self.kernel_size, strides=2, padding='same'),
-            InstanceNormalization(),
-            LeakyReLU(alpha=0.2)
+            Conv2DTranspose(self.conv_filter[1], kernel_size=self.kernel_size, strides=2, padding='same',
+                            name="ug_8_16_conv"),
+            InstanceNormalization(name="ug_8_16_norm"),
+            LeakyReLU(alpha=0.2, name="ug_8_16_relu")
         ]
         self.layers["ug_16_32"] = [
-            Conv2DTranspose(self.conv_filter[2], kernel_size=self.kernel_size, strides=2, padding='same'),
-            InstanceNormalization(),
-            LeakyReLU(alpha=0.2)
+            Conv2DTranspose(self.conv_filter[2], kernel_size=self.kernel_size, strides=2, padding='same',
+                            name="ug_16_32_conv"),
+            InstanceNormalization(name="ug_16_32_norm"),
+            LeakyReLU(alpha=0.2, name="ug_16_32_relu")
         ]
         self.layers["ug_32_64"] = [
-            Conv2DTranspose(self.conv_filter[3], kernel_size=self.kernel_size, strides=2, padding='same'),
-            InstanceNormalization(),
-            LeakyReLU(alpha=0.2)
+            Conv2DTranspose(self.conv_filter[3], kernel_size=self.kernel_size, strides=2, padding='same',
+                            name="ug_32_64_conv"),
+            InstanceNormalization(name="ug_32_64_norm"),
+            LeakyReLU(alpha=0.2, name="ug_32_64_relu")
         ]
         # Out：128*128*64
         self.layers["ug_64_128"] = [
-            Conv2DTranspose(self.conv_filter[4], kernel_size=self.kernel_size, strides=2, padding='same'),
-            InstanceNormalization(),
-            LeakyReLU(alpha=0.2)
+            Conv2DTranspose(self.conv_filter[4], kernel_size=self.kernel_size, strides=2, padding='same',
+                            name="ug_64_128_conv"),
+            InstanceNormalization(name="ug_64_128_norm"),
+            LeakyReLU(alpha=0.2, name="ug_64_128_relu")
         ]
 
         # Out:64*64*128
         self.layers["d_128_64"] = [
-            Conv2D(self.conv_filter[3], kernel_size=self.kernel_size, strides=2, padding='same'),
-            InstanceNormalization(),
-            LeakyReLU(alpha=0.2),
-            Dropout(0.25)
+            Conv2D(self.conv_filter[3], kernel_size=self.kernel_size, strides=2, padding='same', name="d_128_64_conv"),
+            InstanceNormalization(name="d_128_64_norm"),
+            LeakyReLU(alpha=0.2, name="d_128_64_relu"),
+            Dropout(0.25, name="d_128_64_dropout")
         ]
         # Out:32*32*256
         self.layers["d_64_32"] = [
-            Conv2D(self.conv_filter[2], kernel_size=self.kernel_size, strides=2, padding='same'),
-            InstanceNormalization(),
-            LeakyReLU(alpha=0.2),
-            Dropout(0.25)
+            Conv2D(self.conv_filter[2], kernel_size=self.kernel_size, strides=2, padding='same', name="d_64_32_conv"),
+            InstanceNormalization(name="d_64_32_norm"),
+            LeakyReLU(alpha=0.2, name="d_64_32_relu"),
+            Dropout(0.25, name="d_64_32_dropout")
         ]
         # Out:16*16*512
         self.layers["d_32_16"] = [
-            Conv2D(self.conv_filter[1], kernel_size=self.kernel_size, strides=2, padding='same'),
-            InstanceNormalization(),
-            LeakyReLU(alpha=0.2),
-            Dropout(0.25)
+            Conv2D(self.conv_filter[1], kernel_size=self.kernel_size, strides=2, padding='same', name="d_32_16_conv"),
+            InstanceNormalization(name="d_32_16_norm"),
+            LeakyReLU(alpha=0.2, name="d_32_16_relu"),
+            Dropout(0.25, name="d_32_16_dropout")
         ]
         # Out:8*8*512
         self.layers["d_16_8"] = [
-            Conv2D(self.conv_filter[0], kernel_size=self.kernel_size, strides=2, padding='same'),
-            InstanceNormalization(),
-            LeakyReLU(alpha=0.2),
-            Dropout(0.25)
+            Conv2D(self.conv_filter[0], kernel_size=self.kernel_size, strides=2, padding='same', name="d_16_8_conv"),
+            InstanceNormalization(name="d_16_8_norm"),
+            LeakyReLU(alpha=0.2, name="d_16_8_relu"),
+            Dropout(0.25, name="d_16_8_dropout")
         ]
-        self.layers["c_8"] = [Dense(8 ** 2 * 64), Reshape([8, 8, 64])]
-        self.layers["c_16"] = [Dense(16 ** 2 * 32), Reshape([16, 16, 32])]
-        self.layers["c_32"] = [Dense(32 ** 2 * 16), Reshape([32, 32, 16])]
-        self.layers["c_64"] = [Dense(64 ** 2 * 8), Reshape([64, 64, 8])]
+        self.layers["c_8"] = [Dense(8 ** 2 * 64, name="c_8_dense"), Reshape([8, 8, 64], name="c_8_reshape")]
+        self.layers["c_16"] = [Dense(16 ** 2 * 32, name="c_16_dense"), Reshape([16, 16, 32], name="c_16_reshape")]
+        self.layers["c_32"] = [Dense(32 ** 2 * 16, name="c_32_dense"), Reshape([32, 32, 16], name="c_32_reshape")]
+        self.layers["c_64"] = [Dense(64 ** 2 * 8, name="c_64_dense"), Reshape([64, 64, 8], name="c_64_reshape")]
 
     def _setup_g(self, name):
 
@@ -242,10 +249,10 @@ class OurGAN:
         x = add_sequential_layer(x, self.layers["d_16_8"])
 
         x = Flatten()(x)
-        self.d_output = Dense(1)(x)
+        self.d_output = Dense(1, name="d_img_output")(x)  # Output whether the image is generated by program
         x = Dense(128)(x)
         x = Concatenate()([x, self.cond_input])
-        self.dc_output = Dense(1)(x)
+        self.dc_output = Dense(1, name="d_cond_output")(x)  # Output if the image is comfort the condition
 
         self.discriminator = Model(inputs=[self.img_input, self.cond_input], outputs=[self.d_output, self.dc_output])
 
@@ -315,8 +322,7 @@ class OurGAN:
                 print_fn("=" * pad_len + "   Model: " + item + "  " + "=" * pad_len)
                 models[item].summary(print_fn=print_fn)
                 print_fn("\n")
-                keras.utils.plot_model(
-                    models[item], to_file=self.result_path + "/%s.png" % item, show_shapes=True)
+                plot_model(models[item], to_file=self.result_path + "/%s.png" % item, show_shapes=True)
 
     def fit(self, batch_size, epoch, data, model_freq_batch, model_freq_epoch, img_freq, start_epoch, gpu_list):
         """
