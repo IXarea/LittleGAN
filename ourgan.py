@@ -258,9 +258,9 @@ class OurGAN:
     def _setup_u_net(self):
 
         x = self.img_input
-        d_64 = add_sequential_layer(x, self.layers["d_128_64"])
-        d_32 = add_sequential_layer(d_64, self.layers["d_64_32"])
-        d_16 = add_sequential_layer(d_32, self.layers["d_32_16"])
+        d_64 = add_sequential_layer(x, self.layers["d_128_64"], False)
+        d_32 = add_sequential_layer(d_64, self.layers["d_64_32"], False)
+        d_16 = add_sequential_layer(d_32, self.layers["d_32_16"], False)
         # x = OurGAN.add_sequential_layer(d_16, self.layers["d_16_8"])
 
         # x = OurGAN._residual_block(x, self.conv_filter[0], self.residual_kernel_size)

@@ -2,9 +2,11 @@ from keras.layers import Add, Conv2D, LeakyReLU
 from keras_contrib.layers import InstanceNormalization
 
 
-def add_sequential_layer(layer_in, layers_add):
+def add_sequential_layer(layer_in, layers_add, trainable=None):
     layer_out = layer_in
     for layer in layers_add:
+        if trainable is not None:
+            layer.trainable = trainable
         layer_out = layer(layer_out)
     return layer_out
 
