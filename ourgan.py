@@ -38,6 +38,10 @@ class OurGAN:
         self.train_u_net = self.u_net
         self.train_setup = False
 
+        self.current_generator_train = None
+        self.current_discriminator_train = None
+        self.current_u_net_train = None
+
     def _setup(self):
         self.g_opt = Adam(2e-4, 0.8)
         self.g_l1_opt = Adam(4e-5, 0.8)
@@ -114,12 +118,13 @@ class OurGAN:
 
         self.merge_summary = tf.summary.merge_all()
         with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
+            # Todo:confirm here
             self.dis_updater = tf.train.AdamOptimizer(1e-4, 0.5, 0.9) \
-                .minimize(self.dis_loss, var_list=self.train_discriminator.trainable_weights)
+                .minimize(self.dis_loss, var_list=self.current_discriminator_train)
             self.gen_updater = tf.train.AdamOptimizer(1e-4, 0.5, 0.9) \
-                .minimize(self.gen_loss, var_list=self.train_generator.trainable_weights)
+                .minimize(self.gen_loss, var_list=self.current_generator_train)
             self.u_updater = tf.train.AdamOptimizer(2e-4, 0.5, 0.9) \
-                .minimize(self.u_loss, var_list=self.train_u_net.trainable_weights[12:])
+                .minimize(self.u_loss, var_list=self.current_u_net_train)
 
         self.sess.run(tf.global_variables_initializer())
         self.train_setup = True
@@ -371,6 +376,19 @@ class OurGAN:
                 print("\r\nCondition Label:\r\n", data.label, "\r\nEpoch %d Condition:\r\n" % e, a_cond,
                       "\r\n", file=f)
             for b in range(1, 1 + batches):
+                if b % 2 is 1:
+                    self.current_u_net_train = self.u_net.trainable_weights
+                    self.current_discriminator_train = self.discriminator.trainable_weights
+                    self.current_generator_train = self.generator.trainable_weights
+                else:
+                    self.current_generator_train = \
+                        [self.generator.trainable_weights[x] for x in
+                         self.generator_train_list[b // 2 % len(self.generator_train_list)]]
+                    self.current_discriminator_train = \
+                        [self.discriminator.trainable_weights[x] for x in
+                         self.discriminator_train_list[b // 2 % len(self.discriminator_train_list)]]
+                    self.current_u_net_train = [self.u_net.trainable_weights[x] for x in
+                                                self.u_net_train_list[b // 2 % len(self.u_net_train_list)]]
                 result = self._train(batch_size, data_generator, e * batches + b)
                 log = result[:4]
 
