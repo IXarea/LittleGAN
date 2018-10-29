@@ -76,20 +76,20 @@ class OurGAN:
         self.u_img = self.train_u_net([self.fake_img, self.p_real_cond])
         self.dis_u = self.train_discriminator([self.u_img])
 
-        gen_loss_dis_d = -k.mean(self.dis_fake[0])
+        gen_loss_dis_d = -k.tanh(k.mean(self.dis_fake[0]))
         gen_loss_dis_c = k.mean(binary_crossentropy(self.p_real_cond, self.dis_fake[1]))
         gen_loss_l1 = k.mean(binary_crossentropy(self.p_real_img, self.fake_img_real))
 
         self.gen_loss = gen_loss_dis_c + gen_loss_dis_d + 0.2 * gen_loss_l1
 
-        dis_loss_real_d = -k.mean(self.dis_real[0])
+        dis_loss_real_d = -k.tanh(k.mean(self.dis_real[0]))
         dis_loss_real_c = k.mean(binary_crossentropy(self.p_real_cond, self.dis_real[1]))
-        dis_loss_fake_d = k.mean(self.dis_fake[0])
+        dis_loss_fake_d = k.tanh(k.mean(self.dis_fake[0]))
         dis_loss_fake_c = k.mean(binary_crossentropy(self.p_fake_cond, self.dis_fake[1]))
 
         self.dis_loss_ori = dis_loss_fake_c + dis_loss_fake_d + dis_loss_real_c + dis_loss_real_d
 
-        u_loss_dis_d = -k.mean(self.dis_u[0])
+        u_loss_dis_d = -k.tanh(k.mean(self.dis_u[0]))
         u_loss_dis_c = k.mean(binary_crossentropy(self.p_real_cond, self.dis_u[1]))
         u_loss_l1 = k.mean(binary_crossentropy(self.p_real_img, self.u_img))
         self.u_loss = u_loss_dis_c + u_loss_dis_d + u_loss_l1
