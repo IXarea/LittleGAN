@@ -7,8 +7,8 @@ import tensorflow as tf
 from git import Repo
 from keras.layers import Input, Dense, Reshape, Conv2D, Flatten, LeakyReLU, Dropout, Conv2DTranspose
 from keras.layers.merge import Concatenate
+from keras.losses import binary_crossentropy
 from keras.models import Model
-from keras.optimizers import Adam
 from keras.utils import Progbar, multi_gpu_model, plot_model
 from keras_contrib.layers import InstanceNormalization
 
@@ -43,9 +43,6 @@ class OurGAN:
         self.current_u_net_train = None
 
     def _setup(self):
-        self.g_opt = Adam(2e-4, 0.8)
-        self.g_l1_opt = Adam(4e-5, 0.8)
-        self.d_opt = Adam(2e-4, 0.8)
 
         self.init_dim = 8
         self.kernel_size = 5
@@ -79,22 +76,22 @@ class OurGAN:
         self.u_img = self.train_u_net([self.fake_img, self.p_real_cond])
         self.dis_u = self.train_discriminator([self.u_img])
 
-        gen_loss_dis_d = k.mean(k.abs(1 - self.dis_fake[0]))
-        gen_loss_dis_c = k.mean(k.abs(self.p_real_cond - self.dis_fake[1]))
-        gen_loss_l1 = k.mean(k.abs(self.fake_img_real - self.p_real_img))
+        gen_loss_dis_d = -k.mean(self.dis_fake[0])
+        gen_loss_dis_c = k.mean(binary_crossentropy(self.p_real_cond, self.dis_fake[1]))
+        gen_loss_l1 = k.mean(binary_crossentropy(self.p_real_img, self.fake_img_real))
 
         self.gen_loss = gen_loss_dis_c + gen_loss_dis_d + 0.2 * gen_loss_l1
 
-        dis_loss_real_d = k.mean(k.abs(1 - self.dis_real[0]))
-        dis_loss_real_c = k.mean(k.abs(self.p_real_cond - self.dis_real[1]))
-        dis_loss_fake_d = k.mean(k.abs(self.dis_fake[0]))
-        dis_loss_fake_c = k.mean(k.abs(self.p_fake_cond - self.dis_fake[1]))
+        dis_loss_real_d = -k.mean(self.dis_real[0])
+        dis_loss_real_c = k.mean(binary_crossentropy(self.p_real_cond, self.dis_real[1]))
+        dis_loss_fake_d = k.mean(self.dis_fake[0])
+        dis_loss_fake_c = k.mean(binary_crossentropy(self.p_fake_cond, self.dis_fake[1]))
 
         self.dis_loss_ori = dis_loss_fake_c + dis_loss_fake_d + dis_loss_real_c + dis_loss_real_d
 
-        u_loss_dis_d = k.mean(k.abs(1 - self.dis_u[0]))
-        u_loss_dis_c = k.mean(k.abs(self.p_real_cond - self.dis_u[1]))
-        u_loss_l1 = k.mean(k.abs(self.u_img - self.p_real_img))
+        u_loss_dis_d = -k.mean(self.dis_u[0])
+        u_loss_dis_c = k.mean(binary_crossentropy(self.p_real_cond, self.dis_u[1]))
+        u_loss_l1 = k.mean(binary_crossentropy(self.p_real_img, self.u_img))
         self.u_loss = u_loss_dis_c + u_loss_dis_d + u_loss_l1
 
         alpha = k.random_uniform(shape=[k.shape(self.p_real_noise)[0], 1, 1, 1])
