@@ -279,9 +279,9 @@ class OurGAN:
     def _setup_u_net(self):
 
         x = self.img_input
-        d_64 = add_sequential_layer(x, self.layers["d_128_64"], False)
-        d_32 = add_sequential_layer(d_64, self.layers["d_64_32"], False)
-        d_16 = add_sequential_layer(d_32, self.layers["d_32_16"], False)
+        d_64 = add_sequential_layer(x, self.layers["d_128_64"])
+        d_32 = add_sequential_layer(d_64, self.layers["d_64_32"])
+        d_16 = add_sequential_layer(d_32, self.layers["d_32_16"])
         # x = OurGAN.add_sequential_layer(d_16, self.layers["d_16_8"])
 
         # x = OurGAN._residual_block(x, self.conv_filter[0], self.residual_kernel_size)
@@ -307,11 +307,11 @@ class OurGAN:
 
         self.u_net = Model([self.img_input, self.cond_input], [x])
         self.u_net_train_list = [
-            [0, 1, 10, 11],  # Input Cond
-            [2, 3, 4, 5],  # 16->32
-            [6, 7, 8, 9],  # 32->64
-            [12, 13, 14, 15],  # 32->16
-            [16, 17],  # Output Dense
+            [12, 13, 22, 23],  # Input Cond
+            [14, 15, 16, 17],  # 16->32
+            [18, 19, 20, 21],  # 32->64
+            [24, 25, 26, 27],  # 32->16
+            [28, 29],  # Output Dense
         ]
 
     def _setup_gan(self, name):
@@ -376,7 +376,7 @@ class OurGAN:
                       "\r\n", file=f)
             for b in range(1, 1 + batches):
                 if b % 2 is 1:
-                    self.current_u_net_train = self.u_net.trainable_weights
+                    self.current_u_net_train = self.u_net.trainable_weights[12:]
                     self.current_discriminator_train = self.discriminator.trainable_weights
                     self.current_generator_train = self.generator.trainable_weights
                 else:
