@@ -8,7 +8,7 @@ from config import args
 from ourgan import OurGAN
 from utils import CelebA
 
-attr = [20, 39, 15, 8, 9, 11, 17, 33, 26]
+attr = [20, 39, 15, 8, 26]
 cond_dim = len(attr)
 channels = 3
 print("\r\nApplication Params: ", args, "\r\n")
