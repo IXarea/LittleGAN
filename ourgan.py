@@ -5,11 +5,10 @@ import keras.backend as k
 import numpy as np
 import tensorflow as tf
 from git import Repo
-from keras.layers import Input, Dense, Reshape, Conv2D, Flatten, LeakyReLU, Dropout, Conv2DTranspose
+from keras.layers import Input, Dense, Reshape, Conv2D, Flatten, LeakyReLU, Dropout, Conv2DTranspose, BatchNormalization
 from keras.layers.merge import Concatenate
 from keras.models import Model
 from keras.utils import Progbar, multi_gpu_model, plot_model
-from keras_contrib.layers import InstanceNormalization
 
 from utils import add_sequential_layer, save_img, combine_images, save_weights
 
@@ -163,80 +162,80 @@ class OurGAN:
         self.layers["g_8_16"] = [
             Conv2DTranspose(self.conv_filter[1], kernel_size=self.kernel_size, strides=2, padding='same',
                             name="g_8_16_conv"),
-            InstanceNormalization(name="g_8_16_norm"),
+            BatchNormalization(name="g_8_16_norm"),
             LeakyReLU(alpha=0.2, name="g_8_16_relu")
         ]
         self.layers["g_16_32"] = [
             Conv2DTranspose(self.conv_filter[2], kernel_size=self.kernel_size, strides=2, padding='same',
                             name="g_16_32_conv"),
-            InstanceNormalization(name="g_16_32_norm"),
+            BatchNormalization(name="g_16_32_norm"),
             LeakyReLU(alpha=0.2, name="g_16_32_relu")
         ]
         self.layers["g_32_64"] = [
             Conv2DTranspose(self.conv_filter[3], kernel_size=self.kernel_size, strides=2, padding='same',
                             name="g_32_64_conv"),
-            InstanceNormalization(name="g_32_64_norm"),
+            BatchNormalization(name="g_32_64_norm"),
             LeakyReLU(alpha=0.2, name="g_32_64_relu")
         ]
         # Out：128*128*64
         self.layers["g_64_128"] = [
             Conv2DTranspose(self.conv_filter[4], kernel_size=self.kernel_size, strides=2, padding='same',
                             name="g_64_128_conv"),
-            InstanceNormalization(name="g_64_128_norm"),
+            BatchNormalization(name="g_64_128_norm"),
             LeakyReLU(alpha=0.2, name="g_64_128_relu")
         ]
 
         self.layers["ug_8_16"] = [
             Conv2DTranspose(self.conv_filter[1], kernel_size=self.kernel_size, strides=2, padding='same',
                             name="ug_8_16_conv"),
-            InstanceNormalization(name="ug_8_16_norm"),
+            BatchNormalization(name="ug_8_16_norm"),
             LeakyReLU(alpha=0.2, name="ug_8_16_relu")
         ]
         self.layers["ug_16_32"] = [
             Conv2DTranspose(self.conv_filter[2], kernel_size=self.kernel_size, strides=2, padding='same',
                             name="ug_16_32_conv"),
-            InstanceNormalization(name="ug_16_32_norm"),
+            BatchNormalization(name="ug_16_32_norm"),
             LeakyReLU(alpha=0.2, name="ug_16_32_relu")
         ]
         self.layers["ug_32_64"] = [
             Conv2DTranspose(self.conv_filter[3], kernel_size=self.kernel_size, strides=2, padding='same',
                             name="ug_32_64_conv"),
-            InstanceNormalization(name="ug_32_64_norm"),
+            BatchNormalization(name="ug_32_64_norm"),
             LeakyReLU(alpha=0.2, name="ug_32_64_relu")
         ]
         # Out：128*128*64
         self.layers["ug_64_128"] = [
             Conv2DTranspose(self.conv_filter[4], kernel_size=self.kernel_size, strides=2, padding='same',
                             name="ug_64_128_conv"),
-            InstanceNormalization(name="ug_64_128_norm"),
+            BatchNormalization(name="ug_64_128_norm"),
             LeakyReLU(alpha=0.2, name="ug_64_128_relu")
         ]
 
         # Out:64*64*128
         self.layers["d_128_64"] = [
             Conv2D(self.conv_filter[3], kernel_size=self.kernel_size, strides=2, padding='same', name="d_128_64_conv"),
-            InstanceNormalization(name="d_128_64_norm"),
+            BatchNormalization(name="d_128_64_norm"),
             LeakyReLU(alpha=0.2, name="d_128_64_relu"),
             Dropout(0.25, name="d_128_64_dropout")
         ]
         # Out:32*32*256
         self.layers["d_64_32"] = [
             Conv2D(self.conv_filter[2], kernel_size=self.kernel_size, strides=2, padding='same', name="d_64_32_conv"),
-            InstanceNormalization(name="d_64_32_norm"),
+            BatchNormalization(name="d_64_32_norm"),
             LeakyReLU(alpha=0.2, name="d_64_32_relu"),
             Dropout(0.25, name="d_64_32_dropout")
         ]
         # Out:16*16*512
         self.layers["d_32_16"] = [
             Conv2D(self.conv_filter[1], kernel_size=self.kernel_size, strides=2, padding='same', name="d_32_16_conv"),
-            InstanceNormalization(name="d_32_16_norm"),
+            BatchNormalization(name="d_32_16_norm"),
             LeakyReLU(alpha=0.2, name="d_32_16_relu"),
             Dropout(0.25, name="d_32_16_dropout")
         ]
         # Out:8*8*512
         self.layers["d_16_8"] = [
             Conv2D(self.conv_filter[0], kernel_size=self.kernel_size, strides=2, padding='same', name="d_16_8_conv"),
-            InstanceNormalization(name="d_16_8_norm"),
+            BatchNormalization(name="d_16_8_norm"),
             LeakyReLU(alpha=0.2, name="d_16_8_relu"),
             Dropout(0.25, name="d_16_8_dropout")
         ]
@@ -252,7 +251,7 @@ class OurGAN:
         x = Dense(self.init_dim ** 2 * self.conv_filter[0])(x)  # 不可使用两次全连接
         x = LeakyReLU(0.2)(x)
         x = Reshape([self.init_dim, self.init_dim, self.conv_filter[0]])(x)
-        x = InstanceNormalization()(x)
+        x = BatchNormalization()(x)
 
         # c = add_sequential_layer(self.cond_input, self.layers["c_8"])
         # x = Concatenate()([x, c])
@@ -413,14 +412,16 @@ class OurGAN:
                 print("\r\nCondition Label:\r\n", data.label, "\r\nEpoch %d Condition:\r\n" % e, a_cond, "\r\n", file=f)
             for b in range(1, 1 + batches):
                 # 切换优化器
-                if b % 2 is 1:
+                if b % 4 is 0:
+                    self.current_g_opt = self.g_part_updater[b // 4 % g_parts]
+                    self.current_d_opt = self.d_part_updater[b // 4 % d_parts]
+                    self.current_u_opt = self.u_part_updater[b // 4 % u_parts]
+
+                else:
                     self.current_u_opt = self.u_full_updater
                     self.current_d_opt = self.d_full_updater
                     self.current_g_opt = self.g_full_updater
-                else:
-                    self.current_g_opt = self.g_part_updater[b // 2 % g_parts]
-                    self.current_d_opt = self.d_part_updater[b // 2 % d_parts]
-                    self.current_u_opt = self.u_part_updater[b // 2 % u_parts]
+                print(self.current_g_opt)
                 # 训练
                 result = self._train(batch_size, data_generator, (e - 1) * batches + b)
                 log = result[:4]
