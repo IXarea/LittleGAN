@@ -21,7 +21,7 @@ class OurGAN:
         训练器 初始化
         """
         self.result_path = os.path.abspath(path)
-        dirs = [".", "ev_img", "gen_img", "model"]
+        dirs = [".", "ev_img", "gen_img", "model", "events"]
         for item in dirs:
             if not os.path.exists(os.path.join(self.result_path, item)):
                 os.makedirs(os.path.join(self.result_path, item))
@@ -37,9 +37,9 @@ class OurGAN:
         self.train_u_net = self.u_net
         self.train_setup = False
 
-        self.current_generator_train = None
-        self.current_discriminator_train = None
-        self.current_u_net_train = None
+        self.current_u_net_train = self.u_net.trainable_weights[12:]
+        self.current_discriminator_train = self.discriminator.trainable_weights
+        self.current_generator_train = self.generator.trainable_weights
 
     def _setup(self):
 
@@ -79,7 +79,7 @@ class OurGAN:
         gen_loss_dis_d = k.mean(k.square(0.98 - self.dis_fake[0]))
         gen_loss_dis_c = k.mean(k.square(self.p_real_cond - self.dis_fake[1]))
         gen_loss_l1 = k.mean(k.abs(self.p_real_img - self.fake_img_real))
-        self.gen_loss = gen_loss_dis_c + gen_loss_dis_d + 0.2 * gen_loss_l1
+        self.gen_loss = gen_loss_dis_c + gen_loss_dis_d + 0.05 * gen_loss_l1
         # 判别器损失函数
         dis_loss_real_d = k.mean(k.square(0.98 - self.dis_real[0]))
         dis_loss_real_c = k.mean(k.square(self.p_real_cond - self.dis_real[1]))
@@ -90,7 +90,7 @@ class OurGAN:
         u_loss_dis_d = k.mean(k.square(0.98 - self.dis_u[0]))
         u_loss_dis_c = k.mean(k.square(self.p_real_cond - self.dis_u[1]))
         u_loss_l1 = k.mean(k.abs(self.p_real_img - self.u_img))
-        self.u_loss = u_loss_dis_c + u_loss_dis_d + 0.2 * u_loss_l1
+        self.u_loss = u_loss_dis_c + u_loss_dis_d + 0.05 * u_loss_l1
         # 梯度惩罚
         alpha = k.random_uniform(shape=[k.shape(self.p_real_noise)[0], 1, 1, 1])
         interp = alpha * self.p_real_img + (1 - alpha) * self.fake_img
@@ -130,7 +130,7 @@ class OurGAN:
         with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
             # Todo:confirm here
             # 优化器 优化损失函数
-            self.dis_updater = tf.train.AdamOptimizer(1e-4, 0.5, 0.9) \
+            self.dis_updater = tf.train.AdamOptimizer(12e-5, 0.5, 0.9) \
                 .minimize(self.dis_loss, var_list=self.current_discriminator_train)
             self.gen_updater = tf.train.AdamOptimizer(1e-4, 0.5, 0.9) \
                 .minimize(self.gen_loss, var_list=self.current_generator_train)
@@ -382,8 +382,9 @@ class OurGAN:
         repo.archive(open(self.result_path + "/program.tar", "wb"))
         # 可视化准备
         title = ["LossG", "LossD", "LossDo", "LossU"]
-        self.writer = tf.summary.FileWriter(session=self.sess, logdir=self.result_path, graph=self.sess.graph)
         for e in range(start_epoch, 1 + epoch):
+            self.writer = tf.summary.FileWriter(session=self.sess, logdir=self.result_path + "/events",
+                                                graph=self.sess.graph)
             progress_bar = Progbar(batches * batch_size)
             a_noise = np.random.normal(size=[64, self.noise_dim])
             a_cond = np.random.uniform(-1., 1., size=[64, self.cond_dim]).round(1)
