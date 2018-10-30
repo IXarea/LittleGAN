@@ -36,9 +36,9 @@ class OurGAN:
         self.train_u_net = self.u_net
         self.train_setup = False
 
-        self.current_u_net_train = self.u_net.trainable_weights[12:]
-        self.current_discriminator_train = self.discriminator.trainable_weights
-        self.current_generator_train = self.generator.trainable_weights
+        self.current_u_opt = None
+        self.current_d_opt = None
+        self.current_g_opt = None
 
     def _setup(self):
 
@@ -135,15 +135,26 @@ class OurGAN:
         with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
             # Todo:confirm here
             # 优化器 优化损失函数
-            self.dis_updater = tf.train.AdamOptimizer(12e-5, 0.5, 0.9) \
-                .minimize(self.dis_loss, var_list=self.current_discriminator_train)
-            self.gen_updater = tf.train.AdamOptimizer(1e-4, 0.5, 0.9) \
-                .minimize(self.gen_loss, var_list=self.current_generator_train)
-            self.u_updater = tf.train.AdamOptimizer(2e-4, 0.5, 0.9) \
-                .minimize(self.u_loss, var_list=self.current_u_net_train)
+            d_updater = tf.train.AdamOptimizer(12e-5, 0.5, 0.9)
+            self.d_full_updater = d_updater.minimize(self.dis_loss, var_list=self.discriminator.trainable_weights)
+            d_train_part = [[self.discriminator.trainable_weights[x] for x in item] for item in self.discriminator_train_list]
+            self.d_part_updater = [d_updater.minimize(self.dis_loss, var_list=x) for x in d_train_part]
+
+            g_updater = tf.train.AdamOptimizer(1e-4, 0.5, 0.9)
+            self.g_full_updater = g_updater.minimize(self.gen_loss, var_list=self.generator.trainable_weights)
+            g_train_part = [[self.generator.trainable_weights[x] for x in item] for item in self.generator_train_list]
+            self.g_part_updater = [g_updater.minimize(self.gen_loss, var_list=x) for x in g_train_part]
+
+            u_updater = tf.train.AdamOptimizer(2e-4, 0.5, 0.9)
+            self.u_full_updater = u_updater.minimize(self.u_loss, var_list=self.u_net.trainable_weights[12:])
+            u_train_part = [[self.u_net.trainable_weights[x] for x in item] for item in self.u_net_train_list]
+            self.u_part_updater = [u_updater.minimize(self.u_loss, var_list=x) for x in u_train_part]
 
         self.sess.run(tf.global_variables_initializer())
         self.train_setup = True
+        self.current_d_opt = self.d_full_updater
+        self.current_g_opt = self.g_full_updater
+        self.current_u_opt = self.u_full_updater
 
     def _setup_layers(self):
         self.layers = {}
@@ -349,10 +360,9 @@ class OurGAN:
         g_noise = np.random.normal(size=(batch_size, self.noise_dim))
         # Run Train Operation
         _, _, _, d_loss, d_loss_ori, g_loss, u_loss, summary, fake_img = self.sess.run(
-            [self.dis_updater, self.gen_updater, self.u_updater, self.dis_loss, self.dis_loss_ori, self.gen_loss,
-             self.u_loss, self.merge_summary, self.fake_img_real],
-            {self.p_real_img: img_true, self.p_real_cond: cond_true, self.p_real_noise: d_noise,
-             self.p_fake_noise: g_noise, self.p_fake_cond: cond_fake})
+            [self.current_d_opt, self.current_g_opt, self.current_u_opt, self.dis_loss, self.dis_loss_ori, self.gen_loss, self.u_loss, self.merge_summary,
+             self.fake_img_real],
+            {self.p_real_img: img_true, self.p_real_cond: cond_true, self.p_real_noise: d_noise, self.p_fake_noise: g_noise, self.p_fake_cond: cond_fake})
         # Write to Tensorboard
         self.writer.add_summary(summary, step)
         return g_loss, d_loss, d_loss_ori, u_loss, img_true, fake_img, cond_true
@@ -387,6 +397,9 @@ class OurGAN:
         repo.archive(open(self.result_path + "/program.tar", "wb"))
         # 可视化准备
         title = ["LossG", "LossD", "LossDo", "LossU"]
+        g_parts = len(self.g_part_updater)
+        d_parts = len(self.d_part_updater)
+        u_parts = len(self.u_part_updater)
         for e in range(start_epoch, 1 + epoch):
             if os.path.isdir(self.result_path + "/events/e-" + str(e)):
                 continue
@@ -398,21 +411,16 @@ class OurGAN:
             a_cond = np.random.uniform(-1., 1., size=[64, self.cond_dim]).round(1)
             with open(os.path.join(self.result_path, "ev.log"), "a") as f:
                 print("\r\nCondition Label:\r\n", data.label, "\r\nEpoch %d Condition:\r\n" % e, a_cond, "\r\n", file=f)
-            # 分块训练
             for b in range(1, 1 + batches):
+                # 切换优化器
                 if b % 2 is 1:
-                    self.current_u_net_train = self.u_net.trainable_weights[12:]
-                    self.current_discriminator_train = self.discriminator.trainable_weights
-                    self.current_generator_train = self.generator.trainable_weights
+                    self.current_u_opt = self.u_full_updater
+                    self.current_d_opt = self.d_full_updater
+                    self.current_g_opt = self.g_full_updater
                 else:
-                    self.current_generator_train = \
-                        [self.generator.trainable_weights[x] for x in
-                         self.generator_train_list[b // 2 % len(self.generator_train_list)]]
-                    self.current_discriminator_train = \
-                        [self.discriminator.trainable_weights[x] for x in
-                         self.discriminator_train_list[b // 2 % len(self.discriminator_train_list)]]
-                    self.current_u_net_train = [self.u_net.trainable_weights[x] for x in
-                                                self.u_net_train_list[b // 2 % len(self.u_net_train_list)]]
+                    self.current_g_opt = self.g_part_updater[b // 2 % g_parts]
+                    self.current_d_opt = self.d_part_updater[b // 2 % d_parts]
+                    self.current_u_opt = self.u_part_updater[b // 2 % u_parts]
                 # 训练
                 result = self._train(batch_size, data_generator, (e - 1) * batches + b)
                 log = result[:4]
