@@ -132,7 +132,6 @@ class OurGAN:
 
         self.merge_summary = tf.summary.merge_all()
         with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
-            # Todo:confirm here
             # 优化器 优化损失函数
             d_updater = tf.train.AdamOptimizer(12e-5, 0.5, 0.9)
             self.d_full_updater = d_updater.minimize(self.dis_loss, var_list=self.discriminator.trainable_weights)
