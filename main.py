@@ -6,7 +6,7 @@ from git import Repo
 from ourgan import OurGAN
 from utils import CelebA
 
-attr = [20, 39, 15, 8, 26]
+attr = [8, 15, 20, 22, 26, 36, 39]
 cond_dim = len(attr)
 channels = 3
 print("\r\nApplication Params: ", args, "\r\n")
