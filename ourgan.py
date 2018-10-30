@@ -74,6 +74,8 @@ class OurGAN:
         # 调整图像
         self.u_img = self.train_u_net([self.fake_img, self.p_real_cond])
         self.dis_u = self.train_discriminator([self.u_img])
+        self.u_img_2 = self.train_u_net([self.p_real_img, self.p_real_cond])
+        self.dis_u_2 = self.train_discriminator([self.u_img_2])
         # 生成器损失函数
         gen_loss_dis_d = k.mean(k.square(0.98 - self.dis_fake[0]))
         gen_loss_dis_c = k.mean(k.square(self.p_real_cond - self.dis_fake[1]))
@@ -88,8 +90,10 @@ class OurGAN:
         # 自编码网络损失函数
         u_loss_dis_d = k.mean(k.square(0.98 - self.dis_u[0]))
         u_loss_dis_c = k.mean(k.square(self.p_real_cond - self.dis_u[1]))
+        u_loss_dis_d2 = k.mean(k.square(0.98 - self.dis_u_2[0]))
+        u_loss_dis_c2 = k.mean(k.square(self.p_real_cond - self.dis_u_2[1]))
         u_loss_l1 = k.mean(k.abs(self.p_real_img - self.u_img))
-        self.u_loss = u_loss_dis_c + u_loss_dis_d + 0.05 * u_loss_l1
+        self.u_loss = u_loss_dis_c + u_loss_dis_d + 0.05 * u_loss_l1 + u_loss_dis_d2 + u_loss_dis_c2
         # 梯度惩罚
         alpha = k.random_uniform(shape=[k.shape(self.p_real_noise)[0], 1, 1, 1])
         interp = alpha * self.p_real_img + (1 - alpha) * self.fake_img
@@ -112,7 +116,9 @@ class OurGAN:
         tf.summary.scalar("loss-dev/dis_loss_fake_d", dis_loss_fake_d)
         tf.summary.scalar("loss-dev/dis_loss_fake_c", dis_loss_fake_c)
         tf.summary.scalar("loss-dev/u_loss_dis_d", u_loss_dis_d)
+        tf.summary.scalar("loss-dev/u_loss_dis_d2", u_loss_dis_d2)
         tf.summary.scalar("loss-dev/u_loss_dis_c", u_loss_dis_c)
+        tf.summary.scalar("loss-dev/u_loss_dis_c2", u_loss_dis_c2)
         tf.summary.scalar("loss-dev/u_loss_l1", u_loss_l1)
 
         def sum_dis_result(dis_result, name):
