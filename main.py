@@ -1,10 +1,8 @@
+from config import args
 import os
-
 import keras
 import numpy as np
 from git import Repo
-
-from config import args
 from ourgan import OurGAN
 from utils import CelebA
 

@@ -11,8 +11,7 @@ from keras.models import Model
 from keras.utils import Progbar, multi_gpu_model, plot_model
 from keras_contrib.layers import InstanceNormalization
 
-import utils
-from func import add_sequential_layer
+from utils import add_sequential_layer, save_img, combine_images, save_weights
 
 
 class OurGAN:
@@ -383,14 +382,16 @@ class OurGAN:
         # 可视化准备
         title = ["LossG", "LossD", "LossDo", "LossU"]
         for e in range(start_epoch, 1 + epoch):
-            self.writer = tf.summary.FileWriter(session=self.sess, logdir=self.result_path + "/events",
-                                                graph=self.sess.graph)
+            if os.path.isdir(self.result_path + "/events/e-" + str(e)):
+                continue
+            os.makedirs(self.result_path + "/events/e-" + str(e))
+            self.writer = tf.summary.FileWriter(session=self.sess, logdir=self.result_path + "/events/e-" + str(e), graph=self.sess.graph)
+            print("Epoch " + str(e) + ":\n")
             progress_bar = Progbar(batches * batch_size)
             a_noise = np.random.normal(size=[64, self.noise_dim])
             a_cond = np.random.uniform(-1., 1., size=[64, self.cond_dim]).round(1)
             with open(os.path.join(self.result_path, "ev.log"), "a") as f:
-                print("\r\nCondition Label:\r\n", data.label, "\r\nEpoch %d Condition:\r\n" % e, a_cond,
-                      "\r\n", file=f)
+                print("\r\nCondition Label:\r\n", data.label, "\r\nEpoch %d Condition:\r\n" % e, a_cond, "\r\n", file=f)
             # 分块训练
             for b in range(1, 1 + batches):
                 if b % 2 is 1:
@@ -414,33 +415,26 @@ class OurGAN:
                 progress_bar.add(batch_size, values=[x for x in zip(title, log)])
                 # 图片和模型保存
                 if b % img_freq == 0:
-                    utils.save_img(utils.combine_images(img_true),
-                                   os.path.join(self.result_path, "real.png"))
-                    utils.save_img(utils.combine_images(img_fake),
-                                   os.path.join(self.result_path, "gen_img/{}-{}.png".format(e, b)))
-                    utils.save_img(utils.combine_images(self.generator.predict([a_noise, a_cond])),
-                                   os.path.join(self.result_path, "ev_img/{}-{}.png").format(e, b))
-                    utils.save_img(utils.combine_images(self.u_net.predict([img_fake, a_cond])),
-                                   os.path.join(self.result_path, "ev_img/u-{}-{}.png").format(e, b))
+                    save_img(combine_images(img_true), os.path.join(self.result_path, "real.png"))
+                    save_img(combine_images(img_fake), os.path.join(self.result_path, "gen_img/{}-{}.png".format(e, b)))
+                    save_img(combine_images(self.generator.predict([a_noise, a_cond])),
+                             os.path.join(self.result_path, "ev_img/{}-{}.png").format(e, b))
+                    save_img(combine_images(self.u_net.predict([img_fake, a_cond])),
+                             os.path.join(self.result_path, "ev_img/u-{}-{}.png").format(e, b))
                     with open(os.path.join(self.result_path, "train_cond.log"), "a") as f:
-                        print("\r\nCondition Label:\r\n", data.label, "\r\nEpoch %d Batch %d Condition:\r\n" % (e, b),
-                              a_cond,
-                              "\r\n", file=f)
+                        print("\r\nCondition Label:\r\n", data.label, "\r\nEpoch %d Batch %d Condition:\r\n" % (e, b), a_cond, "\r\n", file=f)
                 if b % model_freq_batch == 0:
-                    utils.save_weights({"G": self.generator, "D": self.discriminator, "U-Net": self.u_net},
-                                       os.path.join(self.result_path, "model"))
+                    save_weights({"G": self.generator, "D": self.discriminator, "U-Net": self.u_net}, os.path.join(self.result_path, "model"))
             if e % model_freq_epoch == 0:
-                utils.save_weights(
-                    {"G-" + str(e): self.generator, "D-" + str(e): self.discriminator, "U-Net-" + str(e): self.u_net},
-                    os.path.join(self.result_path, "model")
-                )
+                save_weights({"G-" + str(e): self.generator, "D-" + str(e): self.discriminator, "U-Net-" + str(e): self.u_net},
+                             os.path.join(self.result_path, "model"))
 
     def predict(self, condition, noise=None, labels=None):
         batch_size = condition.shape[0]
         if noise is None:
             noise = np.random.normal(size=[batch_size, self.noise_dim])
         np.set_printoptions(threshold=batch_size * self.noise_dim)
-        img = utils.combine_images(self.generator.predict([noise, condition]))
+        img = combine_images(self.generator.predict([noise, condition]))
         with open(os.path.join(self.result_path, "generate.log"), "w")as f:
             f.write("Generate Image Condition\r\n\r")
             if labels is not None:
@@ -449,5 +443,5 @@ class OurGAN:
             for item in condition:
                 lid += 1
                 print(lid, item, file=f)
-        utils.save_img(img, os.path.join(self.result_path, "generate.png"))
-        utils.save_img(img)
+        save_img(img, os.path.join(self.result_path, "generate.png"))
+        save_img(img)
