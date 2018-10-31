@@ -24,6 +24,7 @@ class OurGAN:
         self.cond_dim = len(arg.attr)
         self.img_dim = arg.img_size
         self.channels = arg.img_channel
+        self.kernel_size = arg.kernel_size
         self.conv_filter = [arg.min_filter * 2 ** (4 - x) for x in range(5)]
         self.sess = k.get_session()
 
@@ -54,7 +55,6 @@ class OurGAN:
     def _setup(self):
 
         self.init_dim = 8
-        self.kernel_size = 5
         self.residual_kernel_size = 5
         self.conv_layers = int(math.log2(self.img_dim / self.init_dim))
 
