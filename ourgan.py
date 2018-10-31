@@ -18,7 +18,7 @@ class OurGAN:
         """
         训练器 初始化
         """
-        
+        print("Build Model Start")
         self.result_path = os.path.abspath(path)
         dirs = [".", "ev_img", "gen_img", "model", "events"]
         for item in dirs:
@@ -39,6 +39,7 @@ class OurGAN:
         self.current_u_opt = None
         self.current_d_opt = None
         self.current_g_opt = None
+        print("Initialize Model OK")
 
     def _setup(self):
 
@@ -58,6 +59,7 @@ class OurGAN:
         self._setup_gan("GAN")
 
     def _setup_train(self):
+        print("Initialize Training Start")
         # 输入占位符
         self.p_real_noise = tf.placeholder(tf.float32, shape=[None, self.noise_dim])
         self.p_fake_noise = tf.placeholder(tf.float32, shape=[None, self.noise_dim])
@@ -101,6 +103,7 @@ class OurGAN:
         gp = tf.sqrt(tf.reduce_mean(tf.square(gradients), axis=1))
         gp = tf.reduce_mean((gp - 1.0) * 2)
         self.dis_loss = gp + self.dis_loss_ori
+        print("Initialize Training: Build Graph OK")
         # 训练过程可视化
         tf.summary.scalar("loss/g_loss", self.gen_loss)
         tf.summary.scalar("loss/d_loss", self.dis_loss)
@@ -132,28 +135,30 @@ class OurGAN:
         sum_dis_result(self.dis_u, "u")
 
         self.merge_summary = tf.summary.merge_all()
+        print("Initialize Training: Prepare Visualize OK")
         with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
             # 优化器 优化损失函数
-            d_updater = tf.train.AdamOptimizer(12e-5, 0.5, 0.9)
+            d_updater = tf.train.AdamOptimizer(15e-5, 0.5, 0.9)
             self.d_full_updater = d_updater.minimize(self.dis_loss, var_list=self.discriminator.trainable_weights)
             d_train_part = [[self.discriminator.trainable_weights[x] for x in item] for item in self.discriminator_train_list]
             self.d_part_updater = [d_updater.minimize(self.dis_loss, var_list=x) for x in d_train_part]
-
-            g_updater = tf.train.AdamOptimizer(1e-4, 0.5, 0.9)
+            print("Initialize Training: Build Discriminator Optimizer OK")
+            g_updater = tf.train.AdamOptimizer(10e-5, 0.5, 0.9)
             self.g_full_updater = g_updater.minimize(self.gen_loss, var_list=self.generator.trainable_weights)
             g_train_part = [[self.generator.trainable_weights[x] for x in item] for item in self.generator_train_list]
             self.g_part_updater = [g_updater.minimize(self.gen_loss, var_list=x) for x in g_train_part]
-
-            u_updater = tf.train.AdamOptimizer(2e-4, 0.5, 0.9)
+            print("Initialize Training: Build Generator Optimizer OK")
+            u_updater = tf.train.AdamOptimizer(5e-5, 0.5, 0.9)
             self.u_full_updater = u_updater.minimize(self.u_loss, var_list=self.u_net.trainable_weights[12:])
             u_train_part = [[self.u_net.trainable_weights[x] for x in item] for item in self.u_net_train_list]
             self.u_part_updater = [u_updater.minimize(self.u_loss, var_list=x) for x in u_train_part]
-
+            print("Initialize Training: Build U-Net Optimizer OK")
         self.sess.run(tf.global_variables_initializer())
         self.train_setup = True
         self.current_d_opt = self.d_full_updater
         self.current_g_opt = self.g_full_updater
         self.current_u_opt = self.u_full_updater
+        print("Initialize Training OK")
 
     def _setup_layers(self):
         self.layers = {}
