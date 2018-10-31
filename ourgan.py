@@ -18,6 +18,7 @@ class OurGAN:
         """
         训练器 初始化
         """
+        
         self.result_path = os.path.abspath(path)
         dirs = [".", "ev_img", "gen_img", "model", "events"]
         for item in dirs:
@@ -156,7 +157,7 @@ class OurGAN:
 
     def _setup_layers(self):
         self.layers = {}
-        self.conv_filter = [384, 192, 96, 96, 48]
+        self.conv_filter = [256, 128, 64, 32, 16]
         # Out:16*16*512
         self.layers["g_8_16"] = [
             Conv2DTranspose(self.conv_filter[1], kernel_size=self.kernel_size, strides=2, padding='same',
@@ -272,13 +273,9 @@ class OurGAN:
         self.generator = Model(inputs=[self.noise_input, self.cond_input], outputs=[self.g_output], name=name)
         # Todo:Change here when modified the model
         self.generator_train_list = [
-            [0, 1, 2, 3],  # Input Image Dense
-            [4, 5, 6, 7],  # 8->16
-            [8, 9, 18, 19],  # Input Condition Dense
-            [10, 11, 12, 13],  # 16->32
-            [14, 15, 16, 17],  # 32->64
-            [20, 21, 22, 23],  # 64->128
-            [24, 25]  # Output Conv
+            [10, 11, 12, 13, 14, 15, 16, 17, 20, 21, 22, 23],  # 16->32->64->128 32.6
+            [4, 5, 6, 7],  # 8->16 82
+            [0, 1, 2, 3],  # Input Image Dense 176
         ]
 
     def _setup_d(self):
@@ -296,11 +293,9 @@ class OurGAN:
 
         self.discriminator = Model(inputs=[self.img_input], outputs=[self.d_output, self.dc_output])
         self.discriminator_train_list = [
-            [0, 1, 2, 3],  # 128->64
-            [4, 5, 6, 7],  # 64->32
-            [8, 9, 10, 11],  # 32->16
-            [12, 13, 14, 15],  # 16->8
             [16, 17, 18, 19],  # Output Dense
+            [12, 13, 14, 15],  # 16->8
+            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],  # 128->64->32->16
         ]
 
     def _setup_u_net(self):
@@ -334,11 +329,9 @@ class OurGAN:
 
         self.u_net = Model([self.img_input, self.cond_input], [x])
         self.u_net_train_list = [
-            [12, 13, 22, 23],  # Input Cond
+            [18, 19, 20, 21, 24, 25, 26, 27],  # 32->64->128
             [14, 15, 16, 17],  # 16->32
-            [18, 19, 20, 21],  # 32->64
-            [24, 25, 26, 27],  # 32->16
-            [28, 29],  # Output Dense
+            [12, 13, 22, 23],  # Input Cond
         ]
 
     def _setup_gan(self, name):
@@ -411,7 +404,7 @@ class OurGAN:
                 print("\r\nCondition Label:\r\n", data.label, "\r\nEpoch %d Condition:\r\n" % e, a_cond, "\r\n", file=f)
             for b in range(1, 1 + batches):
                 # 切换优化器
-                if b % 4 is 0:
+                if b % 5 is 0:
                     self.current_g_opt = self.g_part_updater[b // 4 % g_parts]
                     self.current_d_opt = self.d_part_updater[b // 4 % d_parts]
                     self.current_u_opt = self.u_part_updater[b // 4 % u_parts]
