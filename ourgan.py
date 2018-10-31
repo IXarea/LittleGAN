@@ -314,7 +314,7 @@ class OurGAN:
             [12, 13, 22, 23],  # Input Cond
         ]
 
-    def _train(self, batch_size, data_generator, step):
+    def _train_step(self, batch_size, data_generator, step):
         # Prepare Data
         img_true, cond_true = data_generator.__next__()
         d_noise = np.random.normal(size=(batch_size, self.noise_dim))
@@ -387,10 +387,10 @@ class OurGAN:
                         self.current_d_opt = self.d_full_updater
                         self.current_g_opt = self.g_full_updater
                 # 训练
-                result = self._train(arg.batch_size, data_generator, (e - 1) * batches + b)
+                result = self._train_step(arg.batch_size, data_generator, (e - 1) * batches + b)
                 log = result[:3]
 
-                img_true, img_fake, cond_true = result[6], result[4], result[5]
+                img_true, img_fake, cond_true = result[3], result[4], result[5]
                 progress_bar.add(arg.batch_size, values=[x for x in zip(title, log)])
                 # 图片和模型保存
                 if b % arg.img_freq == 0:
