@@ -420,7 +420,6 @@ class OurGAN:
                     self.current_u_opt = self.u_full_updater
                     self.current_d_opt = self.d_full_updater
                     self.current_g_opt = self.g_full_updater
-                print(self.current_g_opt)
                 # 训练
                 result = self._train(batch_size, data_generator, (e - 1) * batches + b)
                 log = result[:4]
