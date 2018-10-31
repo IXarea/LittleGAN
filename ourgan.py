@@ -111,7 +111,7 @@ class OurGAN:
         self._setup_model_g()
         self._setup_model_u()
 
-    def _setup_train(self, part_optimizer=False):
+    def _setup_train(self, part_optimizer=False, debug_loss=False):
         print("Initialize Training Start")
         # 构建计算图(正向传播)
         with tf.name_scope("graph"):
@@ -166,32 +166,31 @@ class OurGAN:
             tf.summary.scalar("loss/g_loss", self.gen_loss)
             tf.summary.scalar("loss/d_loss", self.dis_loss)
             tf.summary.scalar("loss/u_loss", self.u_loss)
+            if debug_loss:
+                tf.summary.scalar("loss-dev/d_loss_origin", self.dis_loss_ori)
+                tf.summary.scalar("loss-dev/gp", gp)
+                tf.summary.scalar("loss-dev/gen_loss_dis_d", gen_loss_dis_d)
+                tf.summary.scalar("loss-dev/gen_loss_dis_c", gen_loss_dis_c)
+                tf.summary.scalar("loss-dev/gen_loss_l1", gen_loss_l1)
+                tf.summary.scalar("loss-dev/dis_loss_real_d", dis_loss_real_d)
+                tf.summary.scalar("loss-dev/dis_loss_real_c", dis_loss_real_c)
+                tf.summary.scalar("loss-dev/dis_loss_fake_d", dis_loss_fake_d)
+                tf.summary.scalar("loss-dev/dis_loss_fake_c", dis_loss_fake_c)
+                tf.summary.scalar("loss-dev/u_loss_dis_d", u_loss_dis_d)
+                tf.summary.scalar("loss-dev/u_loss_dis_d2", u_loss_dis_d2)
+                tf.summary.scalar("loss-dev/u_loss_dis_c", u_loss_dis_c)
+                tf.summary.scalar("loss-dev/u_loss_dis_c2", u_loss_dis_c2)
+                tf.summary.scalar("loss-dev/u_loss_l1", u_loss_l1)
 
-            tf.summary.scalar("loss-dev/d_loss_origin", self.dis_loss_ori)
-            tf.summary.scalar("loss-dev/gp", gp)
-            tf.summary.scalar("loss-dev/gen_loss_dis_d", gen_loss_dis_d)
-            tf.summary.scalar("loss-dev/gen_loss_dis_c", gen_loss_dis_c)
-            tf.summary.scalar("loss-dev/gen_loss_l1", gen_loss_l1)
-            tf.summary.scalar("loss-dev/dis_loss_real_d", dis_loss_real_d)
-            tf.summary.scalar("loss-dev/dis_loss_real_c", dis_loss_real_c)
-            tf.summary.scalar("loss-dev/dis_loss_fake_d", dis_loss_fake_d)
-            tf.summary.scalar("loss-dev/dis_loss_fake_c", dis_loss_fake_c)
-            tf.summary.scalar("loss-dev/u_loss_dis_d", u_loss_dis_d)
-            tf.summary.scalar("loss-dev/u_loss_dis_d2", u_loss_dis_d2)
-            tf.summary.scalar("loss-dev/u_loss_dis_c", u_loss_dis_c)
-            tf.summary.scalar("loss-dev/u_loss_dis_c2", u_loss_dis_c2)
-            tf.summary.scalar("loss-dev/u_loss_l1", u_loss_l1)
+                def sum_dis_result(dis_result, name):
+                    tf.summary.histogram("aux/%s_d" % name, dis_result[0])
+                    tf.summary.histogram("aux/%s_c" % name, dis_result[1])
+                    tf.summary.scalar("acc/%s_d" % name, tf.reduce_sum(dis_result[0]))
+                    tf.summary.scalar("acc/%s_c" % name, tf.reduce_sum(dis_result[1]))
 
-            def sum_dis_result(dis_result, name):
-                tf.summary.histogram("aux/%s_d" % name, dis_result[0])
-                tf.summary.histogram("aux/%s_c" % name, dis_result[1])
-                tf.summary.scalar("acc/%s_d" % name, tf.reduce_sum(dis_result[0]))
-                tf.summary.scalar("acc/%s_c" % name, tf.reduce_sum(dis_result[1]))
-
-            sum_dis_result(self.dis_real, "real")
-            sum_dis_result(self.dis_fake, "fake")
-            sum_dis_result(self.dis_u, "u")
-
+                sum_dis_result(self.dis_real, "real")
+                sum_dis_result(self.dis_fake, "fake")
+                sum_dis_result(self.dis_u, "u")
             self.merge_summary = tf.summary.merge_all()
             print("Initialize Training: Prepare Visualize OK")
         # 构建优化操作 最小化损失函数(反向传播)
@@ -334,6 +333,7 @@ class OurGAN:
         with open(self.result_path + "/models.txt", "w") as f:
             def print_fn(content):
                 print(content, file=f)
+
             for item in models:
                 pad_len = int(0.5 * (53 - item.__len__()))
                 print_fn("=" * pad_len + "   Model: " + item + "  " + "=" * pad_len)
@@ -353,7 +353,7 @@ class OurGAN:
             self._train_discriminator = multi_gpu_model(self.discriminator, gpu_num)
             self._train_u_net = multi_gpu_model(self.u_net, gpu_num)
         if not self.train_setup:
-            self._setup_train(arg.part is 1)
+            self._setup_train(arg.part is 1, arg.debug is 1)
         data_generator = data.get_generator()
         batches = data.batches
         repo = Repo(os.path.dirname(os.path.realpath(__file__)))
@@ -368,7 +368,9 @@ class OurGAN:
             if os.path.isdir(e_log_path):
                 continue
             os.makedirs(e_log_path)
-            self.writer = tf.summary.FileWriter(session=self.sess, logdir=e_log_path, graph=self.sess.graph)
+            self.writer = tf.summary.FileWriter(session=self.sess, logdir=e_log_path)
+            if e is arg.start:
+                self.writer.add_graph(self.sess.graph)
             print("Epoch " + str(e) + ":\n")
             progress_bar = Progbar(batches * arg.batch_size)
             a_noise = np.random.normal(size=[64, self.noise_dim])

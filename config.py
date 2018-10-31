@@ -12,6 +12,7 @@ parser.add_argument("-a", "--attr_path", type=str, required=False, help="attr fi
 parser.add_argument("-g", "--gpu", type=str, required=False, help="gpu ids, eg: 0,1,2,3", default="-1")
 # 调试参数
 parser.add_argument("--test", type=int, required=False, help="ignore git repo is dirty", default=0, choices=[1, 0])
+parser.add_argument("--debug", type=int, required=False, help="开启debug模式将会记录详细的loss信息", default=0, choices=[1, 0])
 
 # 其他训练控制参数
 parser.add_argument("--epoch", type=int, required=False, help="epoch times", default=100)
