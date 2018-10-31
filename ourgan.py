@@ -376,15 +376,16 @@ class OurGAN:
                 print_fn("\n")
                 plot_model(models[item], to_file=self.result_path + "/%s.png" % item, show_shapes=True)
 
-    def fit(self, batch_size, epoch, data, model_freq_batch, model_freq_epoch, img_freq, start_epoch, gpu_list):
+    def fit(self, data, arg):
         """
         公开的训练方法
         """
         # 初始化训练模型和数据
-        if gpu_list.__len__() > 1:
-            self.train_generator = multi_gpu_model(self.generator)
-            self.train_discriminator = multi_gpu_model(self.discriminator)
-            self.train_u_net = multi_gpu_model(self.u_net)
+        gpu_num = len(arg.gpu)
+        if gpu_num > 1:
+            self.train_generator = multi_gpu_model(self.generator, gpu_num)
+            self.train_discriminator = multi_gpu_model(self.discriminator, gpu_num)
+            self.train_u_net = multi_gpu_model(self.u_net, gpu_num)
         if not self.train_setup:
             self._setup_train()
         data_generator = data.get_generator()
@@ -396,13 +397,13 @@ class OurGAN:
         g_parts = len(self.g_part_updater)
         d_parts = len(self.d_part_updater)
         u_parts = len(self.u_part_updater)
-        for e in range(start_epoch, 1 + epoch):
+        for e in range(arg.start, 1 + arg.epoch):
             if os.path.isdir(self.result_path + "/events/e-" + str(e)):
                 continue
             os.makedirs(self.result_path + "/events/e-" + str(e))
             self.writer = tf.summary.FileWriter(session=self.sess, logdir=self.result_path + "/events/e-" + str(e), graph=self.sess.graph)
             print("Epoch " + str(e) + ":\n")
-            progress_bar = Progbar(batches * batch_size)
+            progress_bar = Progbar(batches * arg.batch_size)
             a_noise = np.random.normal(size=[64, self.noise_dim])
             a_cond = np.random.uniform(-1., 1., size=[64, self.cond_dim]).round(1)
             with open(os.path.join(self.result_path, "ev.log"), "a") as f:
@@ -413,19 +414,18 @@ class OurGAN:
                     self.current_g_opt = self.g_part_updater[b // 4 % g_parts]
                     self.current_d_opt = self.d_part_updater[b // 4 % d_parts]
                     self.current_u_opt = self.u_part_updater[b // 4 % u_parts]
-
                 else:
                     self.current_u_opt = self.u_full_updater
                     self.current_d_opt = self.d_full_updater
                     self.current_g_opt = self.g_full_updater
                 # 训练
-                result = self._train(batch_size, data_generator, (e - 1) * batches + b)
+                result = self._train(arg.batch_size, data_generator, (e - 1) * batches + b)
                 log = result[:4]
 
                 img_true, img_fake, cond_true = result[4], result[5], result[6]
-                progress_bar.add(batch_size, values=[x for x in zip(title, log)])
+                progress_bar.add(arg.batch_size, values=[x for x in zip(title, log)])
                 # 图片和模型保存
-                if b % img_freq == 0:
+                if b % arg.img_freq == 0:
                     save_img(combine_images(img_true), os.path.join(self.result_path, "real.png"))
                     save_img(combine_images(img_fake), os.path.join(self.result_path, "gen_img/{}-{}.png".format(e, b)))
                     save_img(combine_images(self.generator.predict([a_noise, a_cond])),
@@ -434,9 +434,9 @@ class OurGAN:
                              os.path.join(self.result_path, "ev_img/u-{}-{}.png").format(e, b))
                     with open(os.path.join(self.result_path, "train_cond.log"), "a") as f:
                         print("\r\nCondition Label:\r\n", data.label, "\r\nEpoch %d Batch %d Condition:\r\n" % (e, b), a_cond, "\r\n", file=f)
-                if b % model_freq_batch == 0:
+                if b % arg.model_freq_batch == 0:
                     save_weights({"G": self.generator, "D": self.discriminator, "U-Net": self.u_net}, os.path.join(self.result_path, "model"))
-            if e % model_freq_epoch == 0:
+            if e % arg.model_freq_epoch == 0:
                 save_weights({"G-" + str(e): self.generator, "D-" + str(e): self.discriminator, "U-Net-" + str(e): self.u_net},
                              os.path.join(self.result_path, "model"))
 

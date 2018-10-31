@@ -40,13 +40,10 @@ else:
     print("\r\nImage Flows From: ", args.img_path, "   Image Count: ", data.batch_size * data.batches, "\r\n")
     print("\r\nUsing Attribute: ", data.label, "\r\n")
     if args.mode == "train":
-
         repo = Repo(".")
         if repo.is_dirty() and args.test == 0:
             raise EnvironmentError("Git repo is Dirty! Please train after committed.")
-
-        model.fit(args.batch_size, args.epoch, data, args.model_freq_batch, args.model_freq_epoch,
-                  args.img_freq, args.start, args.gpu)
+        model.fit(data, args)
     elif args.mode == "predict":
         cond = keras.utils.to_categorical(range(cond_dim), cond_dim) * 1.65 - 0.7
         cond = np.tile(cond, (cond_dim, 1))

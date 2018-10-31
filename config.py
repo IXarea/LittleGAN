@@ -20,8 +20,11 @@ parser.add_argument("--img_ext", type=str, required=False, help="image extension
 parser.add_argument("--img_size", type=int, required=False, help="image size", default=128)
 parser.add_argument("--img_freq", type=int, required=False, help="image save frequency", default=100)
 parser.add_argument("--model_freq_batch", type=int, required=False, help="save model every n batches", default=500)
-parser.add_argument("--model_freq_epoch", type=int, required=False, help="model save with special name every n epoch",
-                    default=1)
+parser.add_argument("--model_freq_epoch", type=int, required=False, help="model save with special name every n epoch", default=1)
+parser.add_argument("--part", type=int, required=False, help="instruct if enable partly training", default=1)
+parser.add_argument("--residual", type=int, required=False, help="instruct if use the residual blocks", default=1)
+parser.add_argument("--add_c", type=int, required=False, help="instruct if add condition into G and U-Net 0/2/4", default=1)
+
 args = parser.parse_args()
 if args.mode != "train":
     os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
