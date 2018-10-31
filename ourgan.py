@@ -58,101 +58,113 @@ class OurGAN:
         self._setup_u_net()
         self._setup_gan("GAN")
 
-    def _setup_train(self):
+    def _setup_train(self, part_optimizer=False):
         print("Initialize Training Start")
-        # 输入占位符
-        self.p_real_noise = tf.placeholder(tf.float32, shape=[None, self.noise_dim])
-        self.p_fake_noise = tf.placeholder(tf.float32, shape=[None, self.noise_dim])
-        self.p_real_cond = tf.placeholder(tf.float32, shape=[None, self.cond_dim])
-        self.p_fake_cond = tf.placeholder(tf.float32, shape=[None, self.cond_dim])
+        # 构建计算图(正向传播)
+        with tf.name_scope("graph"):
+            # 输入占位符
+            self.p_real_noise = tf.placeholder(tf.float32, shape=[None, self.noise_dim])
+            self.p_fake_noise = tf.placeholder(tf.float32, shape=[None, self.noise_dim])
+            self.p_real_cond = tf.placeholder(tf.float32, shape=[None, self.cond_dim])
+            self.p_fake_cond = tf.placeholder(tf.float32, shape=[None, self.cond_dim])
 
-        self.p_real_img = tf.placeholder(tf.float32, shape=[None, self.img_dim, self.img_dim, self.channels])
-        # 生成图像
-        self.fake_img = self.train_generator([self.p_fake_noise, self.p_fake_cond])
-        self.fake_img_real = self.train_generator([self.p_real_noise, self.p_real_cond])
-        # 判别图像
-        self.dis_fake = self.train_discriminator([self.fake_img])
-        self.dis_real = self.train_discriminator([self.p_real_img])
-        # 调整图像
-        self.u_img = self.train_u_net([self.fake_img, self.p_real_cond])
-        self.dis_u = self.train_discriminator([self.u_img])
-        self.u_img_2 = self.train_u_net([self.p_real_img, self.p_real_cond])
-        self.dis_u_2 = self.train_discriminator([self.u_img_2])
-        # 生成器损失函数
-        gen_loss_dis_d = k.mean(k.square(0.98 - self.dis_fake[0]))
-        gen_loss_dis_c = k.mean(k.square(self.p_real_cond - self.dis_fake[1]))
-        gen_loss_l1 = k.mean(k.abs(self.p_real_img - self.fake_img_real))
-        self.gen_loss = gen_loss_dis_c + gen_loss_dis_d + 0.05 * gen_loss_l1
-        # 判别器损失函数
-        dis_loss_real_d = k.mean(k.square(0.98 - self.dis_real[0]))
-        dis_loss_real_c = k.mean(k.square(self.p_real_cond - self.dis_real[1]))
-        dis_loss_fake_d = k.mean(k.square(self.dis_fake[0] - 0.02))
-        dis_loss_fake_c = k.mean(k.square(self.p_fake_cond - self.dis_fake[1]))
-        self.dis_loss_ori = dis_loss_fake_c + dis_loss_fake_d + dis_loss_real_c + dis_loss_real_d
-        # 自编码网络损失函数
-        u_loss_dis_d = k.mean(k.square(0.98 - self.dis_u[0]))
-        u_loss_dis_c = k.mean(k.square(self.p_real_cond - self.dis_u[1]))
-        u_loss_dis_d2 = k.mean(k.square(0.98 - self.dis_u_2[0]))
-        u_loss_dis_c2 = k.mean(k.square(self.p_real_cond - self.dis_u_2[1]))
-        u_loss_l1 = k.mean(k.abs(self.p_real_img - self.u_img))
-        self.u_loss = u_loss_dis_c + u_loss_dis_d + 0.05 * u_loss_l1 + u_loss_dis_d2 + u_loss_dis_c2
-        # 梯度惩罚
-        alpha = k.random_uniform(shape=[k.shape(self.p_real_noise)[0], 1, 1, 1])
-        interp = alpha * self.p_real_img + (1 - alpha) * self.fake_img
-        gradients = k.gradients(self.train_discriminator([interp]), [interp])[0]
-        gp = tf.sqrt(tf.reduce_mean(tf.square(gradients), axis=1))
-        gp = tf.reduce_mean((gp - 1.0) * 2)
-        self.dis_loss = gp + self.dis_loss_ori
-        print("Initialize Training: Build Graph OK")
+            self.p_real_img = tf.placeholder(tf.float32, shape=[None, self.img_dim, self.img_dim, self.channels])
+            # 生成图像
+            self.fake_img = self.train_generator([self.p_fake_noise, self.p_fake_cond])
+            self.fake_img_real = self.train_generator([self.p_real_noise, self.p_real_cond])
+            # 判别图像
+            self.dis_fake = self.train_discriminator([self.fake_img])
+            self.dis_real = self.train_discriminator([self.p_real_img])
+            # 调整图像
+            self.u_img = self.train_u_net([self.fake_img, self.p_real_cond])
+            self.dis_u = self.train_discriminator([self.u_img])
+            self.u_img_2 = self.train_u_net([self.p_real_img, self.p_real_cond])
+            self.dis_u_2 = self.train_discriminator([self.u_img_2])
+        # 定义损失函数
+        with tf.name_scope("loss"):
+            # 生成器损失函数
+            gen_loss_dis_d = k.mean(k.square(0.98 - self.dis_fake[0]))
+            gen_loss_dis_c = k.mean(k.square(self.p_real_cond - self.dis_fake[1]))
+            gen_loss_l1 = k.mean(k.abs(self.p_real_img - self.fake_img_real))
+            self.gen_loss = gen_loss_dis_c + gen_loss_dis_d + 0.05 * gen_loss_l1
+            # 判别器损失函数
+            dis_loss_real_d = k.mean(k.square(0.98 - self.dis_real[0]))
+            dis_loss_real_c = k.mean(k.square(self.p_real_cond - self.dis_real[1]))
+            dis_loss_fake_d = k.mean(k.square(self.dis_fake[0] - 0.02))
+            dis_loss_fake_c = k.mean(k.square(self.p_fake_cond - self.dis_fake[1]))
+            self.dis_loss_ori = dis_loss_fake_c + dis_loss_fake_d + dis_loss_real_c + dis_loss_real_d
+            # 自编码网络损失函数
+            u_loss_dis_d = k.mean(k.square(0.98 - self.dis_u[0]))
+            u_loss_dis_c = k.mean(k.square(self.p_real_cond - self.dis_u[1]))
+            u_loss_dis_d2 = k.mean(k.square(0.98 - self.dis_u_2[0]))
+            u_loss_dis_c2 = k.mean(k.square(self.p_real_cond - self.dis_u_2[1]))
+            u_loss_l1 = k.mean(k.abs(self.p_real_img - self.u_img))
+            self.u_loss = u_loss_dis_c + u_loss_dis_d + 0.05 * u_loss_l1 + u_loss_dis_d2 + u_loss_dis_c2
+            # 梯度惩罚
+            alpha = k.random_uniform(shape=[k.shape(self.p_real_noise)[0], 1, 1, 1])
+            interp = alpha * self.p_real_img + (1 - alpha) * self.fake_img
+            gradients = k.gradients(self.train_discriminator([interp]), [interp])[0]
+            gp = tf.sqrt(tf.reduce_mean(tf.square(gradients), axis=1))
+            gp = tf.reduce_mean((gp - 1.0) * 2)
+            self.dis_loss = gp + self.dis_loss_ori
+            print("Initialize Training: Build Graph OK")
         # 训练过程可视化
-        tf.summary.scalar("loss/g_loss", self.gen_loss)
-        tf.summary.scalar("loss/d_loss", self.dis_loss)
-        tf.summary.scalar("loss/u_loss", self.u_loss)
+        with tf.name_scope("summary"):
+            tf.summary.scalar("loss/g_loss", self.gen_loss)
+            tf.summary.scalar("loss/d_loss", self.dis_loss)
+            tf.summary.scalar("loss/u_loss", self.u_loss)
 
-        tf.summary.scalar("loss-dev/d_loss_origin", self.dis_loss_ori)
-        tf.summary.scalar("loss-dev/gp", gp)
-        tf.summary.scalar("loss-dev/gen_loss_dis_d", gen_loss_dis_d)
-        tf.summary.scalar("loss-dev/gen_loss_dis_c", gen_loss_dis_c)
-        tf.summary.scalar("loss-dev/gen_loss_l1", gen_loss_l1)
-        tf.summary.scalar("loss-dev/dis_loss_real_d", dis_loss_real_d)
-        tf.summary.scalar("loss-dev/dis_loss_real_c", dis_loss_real_c)
-        tf.summary.scalar("loss-dev/dis_loss_fake_d", dis_loss_fake_d)
-        tf.summary.scalar("loss-dev/dis_loss_fake_c", dis_loss_fake_c)
-        tf.summary.scalar("loss-dev/u_loss_dis_d", u_loss_dis_d)
-        tf.summary.scalar("loss-dev/u_loss_dis_d2", u_loss_dis_d2)
-        tf.summary.scalar("loss-dev/u_loss_dis_c", u_loss_dis_c)
-        tf.summary.scalar("loss-dev/u_loss_dis_c2", u_loss_dis_c2)
-        tf.summary.scalar("loss-dev/u_loss_l1", u_loss_l1)
+            tf.summary.scalar("loss-dev/d_loss_origin", self.dis_loss_ori)
+            tf.summary.scalar("loss-dev/gp", gp)
+            tf.summary.scalar("loss-dev/gen_loss_dis_d", gen_loss_dis_d)
+            tf.summary.scalar("loss-dev/gen_loss_dis_c", gen_loss_dis_c)
+            tf.summary.scalar("loss-dev/gen_loss_l1", gen_loss_l1)
+            tf.summary.scalar("loss-dev/dis_loss_real_d", dis_loss_real_d)
+            tf.summary.scalar("loss-dev/dis_loss_real_c", dis_loss_real_c)
+            tf.summary.scalar("loss-dev/dis_loss_fake_d", dis_loss_fake_d)
+            tf.summary.scalar("loss-dev/dis_loss_fake_c", dis_loss_fake_c)
+            tf.summary.scalar("loss-dev/u_loss_dis_d", u_loss_dis_d)
+            tf.summary.scalar("loss-dev/u_loss_dis_d2", u_loss_dis_d2)
+            tf.summary.scalar("loss-dev/u_loss_dis_c", u_loss_dis_c)
+            tf.summary.scalar("loss-dev/u_loss_dis_c2", u_loss_dis_c2)
+            tf.summary.scalar("loss-dev/u_loss_l1", u_loss_l1)
 
-        def sum_dis_result(dis_result, name):
-            tf.summary.histogram("aux/%s_d" % name, dis_result[0])
-            tf.summary.histogram("aux/%s_c" % name, dis_result[1])
-            tf.summary.scalar("acc/%s_d" % name, tf.reduce_sum(dis_result[0]))
-            tf.summary.scalar("acc/%s_c" % name, tf.reduce_sum(dis_result[1]))
+            def sum_dis_result(dis_result, name):
+                tf.summary.histogram("aux/%s_d" % name, dis_result[0])
+                tf.summary.histogram("aux/%s_c" % name, dis_result[1])
+                tf.summary.scalar("acc/%s_d" % name, tf.reduce_sum(dis_result[0]))
+                tf.summary.scalar("acc/%s_c" % name, tf.reduce_sum(dis_result[1]))
 
-        sum_dis_result(self.dis_real, "real")
-        sum_dis_result(self.dis_fake, "fake")
-        sum_dis_result(self.dis_u, "u")
+            sum_dis_result(self.dis_real, "real")
+            sum_dis_result(self.dis_fake, "fake")
+            sum_dis_result(self.dis_u, "u")
 
-        self.merge_summary = tf.summary.merge_all()
-        print("Initialize Training: Prepare Visualize OK")
+            self.merge_summary = tf.summary.merge_all()
+            print("Initialize Training: Prepare Visualize OK")
+        # 构建优化操作 最小化损失函数(反向传播)
         with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
-            # 优化器 优化损失函数
+
+            # 全局优化器
             d_updater = tf.train.AdamOptimizer(15e-5, 0.5, 0.9)
             self.d_full_updater = d_updater.minimize(self.dis_loss, var_list=self.discriminator.trainable_weights)
-            d_train_part = [[self.discriminator.trainable_weights[x] for x in item] for item in self.discriminator_train_list]
-            self.d_part_updater = [d_updater.minimize(self.dis_loss, var_list=x) for x in d_train_part]
-            print("Initialize Training: Build Discriminator Optimizer OK")
+            print("Initialize Training: Build Full Optimizer OK: Discriminator")
             g_updater = tf.train.AdamOptimizer(10e-5, 0.5, 0.9)
             self.g_full_updater = g_updater.minimize(self.gen_loss, var_list=self.generator.trainable_weights)
-            g_train_part = [[self.generator.trainable_weights[x] for x in item] for item in self.generator_train_list]
-            self.g_part_updater = [g_updater.minimize(self.gen_loss, var_list=x) for x in g_train_part]
-            print("Initialize Training: Build Generator Optimizer OK")
+            print("Initialize Training: Build Full Optimizer OK: Generator")
             u_updater = tf.train.AdamOptimizer(5e-5, 0.5, 0.9)
             self.u_full_updater = u_updater.minimize(self.u_loss, var_list=self.u_net.trainable_weights[12:])
-            u_train_part = [[self.u_net.trainable_weights[x] for x in item] for item in self.u_net_train_list]
-            self.u_part_updater = [u_updater.minimize(self.u_loss, var_list=x) for x in u_train_part]
-            print("Initialize Training: Build U-Net Optimizer OK")
+            print("Initialize Training: Build Full Optimizer OK: U-Net")
+            # 分块优化器
+            if part_optimizer:
+                d_train_part = [[self.discriminator.trainable_weights[x] for x in item] for item in self.discriminator_train_list]
+                self.d_part_updater = [d_updater.minimize(self.dis_loss, var_list=x) for x in d_train_part]
+                print("Initialize Training: Build Part Optimizer OK: Discriminator")
+                g_train_part = [[self.generator.trainable_weights[x] for x in item] for item in self.generator_train_list]
+                self.g_part_updater = [g_updater.minimize(self.gen_loss, var_list=x) for x in g_train_part]
+                print("Initialize Training: Build Part Optimizer OK: Generator")
+                u_train_part = [[self.u_net.trainable_weights[x] for x in item] for item in self.u_net_train_list]
+                self.u_part_updater = [u_updater.minimize(self.u_loss, var_list=x) for x in u_train_part]
+                print("Initialize Training: Build Part Optimizer OK: U-Net")
         self.sess.run(tf.global_variables_initializer())
         self.train_setup = True
         self.current_d_opt = self.d_full_updater
@@ -387,7 +399,7 @@ class OurGAN:
             self.train_discriminator = multi_gpu_model(self.discriminator, gpu_num)
             self.train_u_net = multi_gpu_model(self.u_net, gpu_num)
         if not self.train_setup:
-            self._setup_train()
+            self._setup_train(arg.part is 1)
         data_generator = data.get_generator()
         batches = data.batches
         repo = Repo(os.path.dirname(os.path.realpath(__file__)))
@@ -410,14 +422,15 @@ class OurGAN:
                 print("\r\nCondition Label:\r\n", data.label, "\r\nEpoch %d Condition:\r\n" % e, a_cond, "\r\n", file=f)
             for b in range(1, 1 + batches):
                 # 切换优化器
-                if b % 5 is 0:
-                    self.current_g_opt = self.g_part_updater[b // 4 % g_parts]
-                    self.current_d_opt = self.d_part_updater[b // 4 % d_parts]
-                    self.current_u_opt = self.u_part_updater[b // 4 % u_parts]
-                else:
-                    self.current_u_opt = self.u_full_updater
-                    self.current_d_opt = self.d_full_updater
-                    self.current_g_opt = self.g_full_updater
+                if arg.part is 1:
+                    if b % 5 is 0:
+                        self.current_g_opt = self.g_part_updater[b // 4 % g_parts]
+                        self.current_d_opt = self.d_part_updater[b // 4 % d_parts]
+                        self.current_u_opt = self.u_part_updater[b // 4 % u_parts]
+                    else:
+                        self.current_u_opt = self.u_full_updater
+                        self.current_d_opt = self.d_full_updater
+                        self.current_g_opt = self.g_full_updater
                 # 训练
                 result = self._train(arg.batch_size, data_generator, (e - 1) * batches + b)
                 log = result[:4]
