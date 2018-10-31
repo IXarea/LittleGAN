@@ -26,7 +26,7 @@ parser.add_argument("--attr", type=str, required=False, help="选择训练的属
 parser.add_argument("--min_filter", type=int, required=False, help="最少的卷机器过滤器数量", default=16)
 parser.add_argument("--img_size", type=int, required=False, help="image size", default=128)
 parser.add_argument("--img_channel", type=int, required=False, help="模型中图像通道数", default=3)
-parser.add_argument("--part", type=int, required=False, help="instruct if enable partly training", default=1, choices=[1, 0])
+parser.add_argument("--part", type=int, required=False, help="是否使用训练（若非默认参数按情况调整分组）", default=1, choices=[1, 0])
 parser.add_argument("--residual", type=int, required=False, help="instruct if use the residual blocks", default=0, choices=[1, 0])
 parser.add_argument("--add_c", type=int, required=False, help="instruct if add condition into G and U-Net", default=2, choices=[0, 2, 4])
 

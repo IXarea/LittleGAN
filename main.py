@@ -10,14 +10,17 @@ cond_dim = len(args.attr)
 print("Application Params: ", args, "\r\n")
 base_path = path.abspath("../result/" + args.name)
 model = OurGAN(base_path, args)
-g_file = path.abspath(base_path + "/model/G_weight.h5")
-if path.isfile(g_file):
-    print("Loading Exist Generator Weight")
-    model.generator.load_weights(g_file)
+
 d_file = path.abspath(base_path + "/model/D_weight.h5")
 if path.isfile(d_file):
     print("Loading Exist Discriminator Weight")
     model.discriminator.load_weights(d_file)
+
+g_file = path.abspath(base_path + "/model/G_weight.h5")
+if path.isfile(g_file):
+    print("Loading Exist Generator Weight")
+    model.generator.load_weights(g_file)
+
 u_file = path.abspath(base_path + "/model/U-Net_weight.h5")
 if path.isfile(u_file):
     print("Loading Exist U-Net Weight")

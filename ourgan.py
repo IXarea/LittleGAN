@@ -19,27 +19,36 @@ class OurGAN:
         模型初始化
         """
         print("Build Model Start")
-        self.result_path = os.path.abspath(path)
-        dirs = [".", "ev_img", "gen_img", "model", "events"]
-        for item in dirs:
-            if not os.path.exists(os.path.join(self.result_path, item)):
-                os.makedirs(os.path.join(self.result_path, item))
+
         self.noise_dim = arg.noise
         self.cond_dim = len(arg.attr)
         self.img_dim = arg.img_size
         self.channels = arg.img_channel
         self.conv_filter = [arg.min_filter * 2 ** (4 - x) for x in range(5)]
         self.sess = k.get_session()
-        self._setup()
-        self.writer = None
-        self.train_generator = self.generator
-        self.train_discriminator = self.discriminator
-        self.train_u_net = self.u_net
-        self.train_setup = False
 
-        self.current_u_opt = None
+        self.result_path = os.path.abspath(path)
+        dirs = [".", "ev_img", "gen_img", "model", "events"]
+        for item in dirs:
+            if not os.path.exists(os.path.join(self.result_path, item)):
+                os.makedirs(os.path.join(self.result_path, item))
+
+        self._setup()
+
+        self._train_discriminator = self.discriminator
+        self._train_generator = self.generator
+        self._train_u_net = self.u_net
+
         self.current_d_opt = None
         self.current_g_opt = None
+        self.current_u_opt = None
+
+        self.d_part_updater = []
+        self.g_part_updater = []
+        self.u_part_updater = []
+
+        self.writer = None
+        self.train_setup = False
         print("Initialize Model OK")
 
     def _setup(self):
@@ -54,6 +63,19 @@ class OurGAN:
         self.img_input = Input(shape=(self.img_dim, self.img_dim, self.channels,))
         # Public Layers
         self.layers = {
+            "d_128_64": [
+                Conv2D(self.conv_filter[3], kernel_size=self.kernel_size, strides=2, padding='same', name="d_128_64_conv"),
+                BatchNormalization(name="d_128_64_norm"), LeakyReLU(alpha=0.2, name="d_128_64_relu"), Dropout(0.25, name="d_128_64_dropout")],
+            "d_64_32": [
+                Conv2D(self.conv_filter[2], kernel_size=self.kernel_size, strides=2, padding='same', name="d_64_32_conv"),
+                BatchNormalization(name="d_64_32_norm"), LeakyReLU(alpha=0.2, name="d_64_32_relu"), Dropout(0.25, name="d_64_32_dropout")],
+            "d_32_16": [
+                Conv2D(self.conv_filter[1], kernel_size=self.kernel_size, strides=2, padding='same', name="d_32_16_conv"),
+                BatchNormalization(name="d_32_16_norm"), LeakyReLU(alpha=0.2, name="d_32_16_relu"), Dropout(0.25, name="d_32_16_dropout")],
+            "d_16_8": [
+                Conv2D(self.conv_filter[0], kernel_size=self.kernel_size, strides=2, padding='same', name="d_16_8_conv"),
+                BatchNormalization(name="d_16_8_norm"), LeakyReLU(alpha=0.2, name="d_16_8_relu"), Dropout(0.25, name="d_16_8_dropout")],
+
             "g_8_16": [
                 Conv2DTranspose(self.conv_filter[1], kernel_size=self.kernel_size, strides=2, padding='same', name="g_8_16_conv"),
                 BatchNormalization(name="g_8_16_norm"), LeakyReLU(alpha=0.2, name="g_8_16_relu")],
@@ -66,6 +88,7 @@ class OurGAN:
             "g_64_128": [
                 Conv2DTranspose(self.conv_filter[4], kernel_size=self.kernel_size, strides=2, padding='same', name="g_64_128_conv"),
                 BatchNormalization(name="g_64_128_norm"), LeakyReLU(alpha=0.2, name="g_64_128_relu")],
+
             "ug_8_16": [
                 Conv2DTranspose(self.conv_filter[1], kernel_size=self.kernel_size, strides=2, padding='same', name="ug_8_16_conv"),
                 BatchNormalization(name="ug_8_16_norm"), LeakyReLU(alpha=0.2, name="ug_8_16_relu")],
@@ -78,27 +101,15 @@ class OurGAN:
             "ug_64_128": [
                 Conv2DTranspose(self.conv_filter[4], kernel_size=self.kernel_size, strides=2, padding='same', name="ug_64_128_conv"),
                 BatchNormalization(name="ug_64_128_norm"), LeakyReLU(alpha=0.2, name="ug_64_128_relu")],
-            "d_128_64": [
-                Conv2D(self.conv_filter[3], kernel_size=self.kernel_size, strides=2, padding='same', name="d_128_64_conv"),
-                BatchNormalization(name="d_128_64_norm"), LeakyReLU(alpha=0.2, name="d_128_64_relu"), Dropout(0.25, name="d_128_64_dropout")],
-            "d_64_32": [
-                Conv2D(self.conv_filter[2], kernel_size=self.kernel_size, strides=2, padding='same', name="d_64_32_conv"),
-                BatchNormalization(name="d_64_32_norm"), LeakyReLU(alpha=0.2, name="d_64_32_relu"), Dropout(0.25, name="d_64_32_dropout")],
-            "d_32_16": [
-                Conv2D(self.conv_filter[1], kernel_size=self.kernel_size, strides=2, padding='same', name="d_32_16_conv"),
-                BatchNormalization(name="d_32_16_norm"), LeakyReLU(alpha=0.2, name="d_32_16_relu"), Dropout(0.25, name="d_32_16_dropout")],
-            "d_16_8": [
-                Conv2D(self.conv_filter[0], kernel_size=self.kernel_size, strides=2, padding='same', name="d_16_8_conv"),
-                BatchNormalization(name="d_16_8_norm"), LeakyReLU(alpha=0.2, name="d_16_8_relu"), Dropout(0.25, name="d_16_8_dropout")
-            ],
+
             "c_8": [Dense(8 ** 2 * 64, name="c_8_dense"), Reshape([8, 8, 64], name="c_8_reshape")],
             "c_16": [Dense(16 ** 2 * 32, name="c_16_dense"), Reshape([16, 16, 32], name="c_16_reshape")],
             "c_32": [Dense(32 ** 2 * 16, name="c_32_dense"), Reshape([32, 32, 16], name="c_32_reshape")],
             "c_64": [Dense(64 ** 2 * 8, name="c_64_dense"), Reshape([64, 64, 8], name="c_64_reshape")]
         }
-        self._setup_g("G")
-        self._setup_d()
-        self._setup_u_net()
+        self._setup_model_d()
+        self._setup_model_g()
+        self._setup_model_u()
 
     def _setup_train(self, part_optimizer=False):
         print("Initialize Training Start")
@@ -112,16 +123,16 @@ class OurGAN:
 
             self.p_real_img = tf.placeholder(tf.float32, shape=[None, self.img_dim, self.img_dim, self.channels])
             # 生成图像
-            self.fake_img = self.train_generator([self.p_fake_noise, self.p_fake_cond])
-            self.fake_img_real = self.train_generator([self.p_real_noise, self.p_real_cond])
+            self.fake_img = self._train_generator([self.p_fake_noise, self.p_fake_cond])
+            self.fake_img_real = self._train_generator([self.p_real_noise, self.p_real_cond])
             # 判别图像
-            self.dis_fake = self.train_discriminator([self.fake_img])
-            self.dis_real = self.train_discriminator([self.p_real_img])
+            self.dis_fake = self._train_discriminator([self.fake_img])
+            self.dis_real = self._train_discriminator([self.p_real_img])
             # 调整图像
-            self.u_img = self.train_u_net([self.fake_img, self.p_real_cond])
-            self.dis_u = self.train_discriminator([self.u_img])
-            self.u_img_2 = self.train_u_net([self.p_real_img, self.p_real_cond])
-            self.dis_u_2 = self.train_discriminator([self.u_img_2])
+            self.u_img = self._train_u_net([self.fake_img, self.p_real_cond])
+            self.dis_u = self._train_discriminator([self.u_img])
+            self.u_img_2 = self._train_u_net([self.p_real_img, self.p_real_cond])
+            self.dis_u_2 = self._train_discriminator([self.u_img_2])
         # 定义损失函数
         with tf.name_scope("loss"):
             # 生成器损失函数
@@ -145,7 +156,7 @@ class OurGAN:
             # 梯度惩罚
             alpha = k.random_uniform(shape=[k.shape(self.p_real_noise)[0], 1, 1, 1])
             interp = alpha * self.p_real_img + (1 - alpha) * self.fake_img
-            gradients = k.gradients(self.train_discriminator([interp]), [interp])[0]
+            gradients = k.gradients(self._train_discriminator([interp]), [interp])[0]
             gp = tf.sqrt(tf.reduce_mean(tf.square(gradients), axis=1))
             gp = tf.reduce_mean((gp - 1.0) * 2)
             self.dis_loss = gp + self.dis_loss_ori
@@ -213,8 +224,28 @@ class OurGAN:
         self.current_u_opt = self.u_full_updater
         print("Initialize Training OK")
 
-    def _setup_g(self, name):
-        # 8x8
+    def _setup_model_d(self):
+        x = self.img_input
+        x = add_sequential_layer(x, self.layers["d_128_64"])
+        x = add_sequential_layer(x, self.layers["d_64_32"])
+        x = add_sequential_layer(x, self.layers["d_32_16"])
+        x = add_sequential_layer(x, self.layers["d_16_8"])
+
+        x = Flatten()(x)
+        # Output whether the image is generated by program
+        self.d_output = Dense(1, name="d_img_output", activation='sigmoid')(x)
+        # Output if the image's condition
+        self.dc_output = Dense(self.cond_dim, name="d_cond_output", activation="sigmoid")(x)
+
+        self.discriminator = Model(inputs=[self.img_input], outputs=[self.d_output, self.dc_output], name="D")
+        # Todo: This config is only for no residual and add 2 condition
+        self.discriminator_train_list = [
+            [16, 17, 18, 19],  # Output Dense
+            [12, 13, 14, 15],  # 16->8
+            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],  # 128->64->32->16
+        ]
+
+    def _setup_model_g(self):
         x = Concatenate()([self.noise_input, self.cond_input])
         x = Dense(self.init_dim ** 2 * self.conv_filter[0])(x)  # 不可使用两次全连接
         x = LeakyReLU(0.2)(x)
@@ -238,35 +269,15 @@ class OurGAN:
         x = add_sequential_layer(x, self.layers["g_64_128"])
 
         self.g_output = Conv2D(self.channels, kernel_size=self.kernel_size, padding='same', activation='tanh')(x)
-        self.generator = Model(inputs=[self.noise_input, self.cond_input], outputs=[self.g_output], name=name)
-        # Todo:Change here when modified the model
+        self.generator = Model(inputs=[self.noise_input, self.cond_input], outputs=[self.g_output], name="G")
+        # Todo: This config is only for no residual and add 2 condition
         self.generator_train_list = [
             [10, 11, 12, 13, 14, 15, 16, 17, 20, 21, 22, 23],  # 16->32->64->128 32.6
             [4, 5, 6, 7],  # 8->16 82
             [0, 1, 2, 3],  # Input Image Dense 176
         ]
 
-    def _setup_d(self):
-        x = self.img_input
-        x = add_sequential_layer(x, self.layers["d_128_64"])
-        x = add_sequential_layer(x, self.layers["d_64_32"])
-        x = add_sequential_layer(x, self.layers["d_32_16"])
-        x = add_sequential_layer(x, self.layers["d_16_8"])
-
-        x = Flatten()(x)
-        # Output whether the image is generated by program
-        self.d_output = Dense(1, name="d_img_output", activation='sigmoid')(x)
-        # Output if the image's condition
-        self.dc_output = Dense(self.cond_dim, name="d_cond_output", activation="sigmoid")(x)
-
-        self.discriminator = Model(inputs=[self.img_input], outputs=[self.d_output, self.dc_output])
-        self.discriminator_train_list = [
-            [16, 17, 18, 19],  # Output Dense
-            [12, 13, 14, 15],  # 16->8
-            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],  # 128->64->32->16
-        ]
-
-    def _setup_u_net(self):
+    def _setup_model_u(self):
 
         x = self.img_input
         d_64 = add_sequential_layer(x, self.layers["d_128_64"])
@@ -295,7 +306,8 @@ class OurGAN:
 
         x = Conv2D(self.channels, kernel_size=self.kernel_size, padding='same', activation='tanh')(x)
 
-        self.u_net = Model([self.img_input, self.cond_input], [x])
+        self.u_net = Model([self.img_input, self.cond_input], [x], name="U-Net")
+        # Todo: This config is only for no residual and add 2 condition
         self.u_net_train_list = [
             [18, 19, 20, 21, 24, 25, 26, 27],  # 32->64->128
             [14, 15, 16, 17],  # 16->32
@@ -309,25 +321,25 @@ class OurGAN:
         cond_fake = np.random.uniform(-1., 1., size=[batch_size, self.cond_dim]).round(1)
         g_noise = np.random.normal(size=(batch_size, self.noise_dim))
         # Run Train Operation
-        _, _, _, d_loss, d_loss_ori, g_loss, u_loss, summary, fake_img = self.sess.run(
-            [self.current_d_opt, self.current_g_opt, self.current_u_opt, self.dis_loss, self.dis_loss_ori, self.gen_loss, self.u_loss, self.merge_summary,
+        _, _, _, d_loss, g_loss, u_loss, summary, fake_img = self.sess.run(
+            [self.current_d_opt, self.current_g_opt, self.current_u_opt, self.dis_loss, self.gen_loss, self.u_loss, self.merge_summary,
              self.fake_img_real],
             {self.p_real_img: img_true, self.p_real_cond: cond_true, self.p_real_noise: d_noise, self.p_fake_noise: g_noise, self.p_fake_cond: cond_fake})
         # Write to Tensorboard
         self.writer.add_summary(summary, step)
-        return g_loss, d_loss, d_loss_ori, u_loss, img_true, fake_img, cond_true
+        return d_loss, g_loss, u_loss, img_true, fake_img, cond_true
 
     def plot(self):
-        models = {"G": self.generator, "D": self.discriminator, "U-NET": self.u_net}
+        models = {"D": self.discriminator, "G": self.generator, "U": self.u_net}
         with open(self.result_path + "/models.txt", "w") as f:
             def print_fn(content):
                 print(content, file=f)
-
             for item in models:
                 pad_len = int(0.5 * (53 - item.__len__()))
                 print_fn("=" * pad_len + "   Model: " + item + "  " + "=" * pad_len)
                 models[item].summary(print_fn=print_fn)
                 print_fn("\n")
+            for item in models:
                 plot_model(models[item], to_file=self.result_path + "/%s.png" % item, show_shapes=True)
 
     def fit(self, data, arg):
@@ -337,9 +349,9 @@ class OurGAN:
         # 初始化训练模型和数据
         gpu_num = len(arg.gpu)
         if gpu_num > 1:
-            self.train_generator = multi_gpu_model(self.generator, gpu_num)
-            self.train_discriminator = multi_gpu_model(self.discriminator, gpu_num)
-            self.train_u_net = multi_gpu_model(self.u_net, gpu_num)
+            self._train_generator = multi_gpu_model(self.generator, gpu_num)
+            self._train_discriminator = multi_gpu_model(self.discriminator, gpu_num)
+            self._train_u_net = multi_gpu_model(self.u_net, gpu_num)
         if not self.train_setup:
             self._setup_train(arg.part is 1)
         data_generator = data.get_generator()
@@ -347,16 +359,16 @@ class OurGAN:
         repo = Repo(os.path.dirname(os.path.realpath(__file__)))
         repo.archive(open(self.result_path + "/program.tar", "wb"))
         # 可视化准备
-        title = ["LossG", "LossD", "LossDo", "LossU"]
-        if arg.part is 1:
-            g_parts = len(self.g_part_updater)
-            d_parts = len(self.d_part_updater)
-            u_parts = len(self.u_part_updater)
+        title = ["LossD", "LossG", "LossU"]
+        g_parts = len(self.g_part_updater)
+        d_parts = len(self.d_part_updater)
+        u_parts = len(self.u_part_updater)
         for e in range(arg.start, 1 + arg.epoch):
-            if os.path.isdir(self.result_path + "/events/e-" + str(e)):
+            e_log_path = self.result_path + "/events/e-" + str(e)
+            if os.path.isdir(e_log_path):
                 continue
-            os.makedirs(self.result_path + "/events/e-" + str(e))
-            self.writer = tf.summary.FileWriter(session=self.sess, logdir=self.result_path + "/events/e-" + str(e), graph=self.sess.graph)
+            os.makedirs(e_log_path)
+            self.writer = tf.summary.FileWriter(session=self.sess, logdir=e_log_path, graph=self.sess.graph)
             print("Epoch " + str(e) + ":\n")
             progress_bar = Progbar(batches * arg.batch_size)
             a_noise = np.random.normal(size=[64, self.noise_dim])
@@ -376,9 +388,9 @@ class OurGAN:
                         self.current_g_opt = self.g_full_updater
                 # 训练
                 result = self._train(arg.batch_size, data_generator, (e - 1) * batches + b)
-                log = result[:4]
+                log = result[:3]
 
-                img_true, img_fake, cond_true = result[4], result[5], result[6]
+                img_true, img_fake, cond_true = result[6], result[4], result[5]
                 progress_bar.add(arg.batch_size, values=[x for x in zip(title, log)])
                 # 图片和模型保存
                 if b % arg.img_freq == 0:
