@@ -144,8 +144,8 @@ class OurGAN:
             dis_loss_real_d = k.mean(k.square(0.98 - self.dis_real[0]))
             dis_loss_real_c = k.mean(k.square(self.p_real_cond - self.dis_real[1]))
             dis_loss_fake_d = k.mean(k.square(self.dis_fake[0] - 0.02))
-            dis_loss_fake_c = k.mean(k.square(self.p_fake_cond - self.dis_fake[1]))
-            self.dis_loss_ori = dis_loss_fake_c + dis_loss_fake_d + dis_loss_real_c + dis_loss_real_d
+            # dis_loss_fake_c = k.mean(k.square(self.p_fake_cond - self.dis_fake[1]))
+            self.dis_loss_ori = dis_loss_fake_d + 2 * dis_loss_real_c + dis_loss_real_d
             # 自编码网络损失函数
             u_loss_dis_d = k.mean(k.square(0.98 - self.dis_u[0]))
             u_loss_dis_c = k.mean(k.square(self.p_real_cond - self.dis_u[1]))
@@ -158,7 +158,7 @@ class OurGAN:
             interp = alpha * self.p_real_img + (1 - alpha) * self.fake_img
             gradients = k.gradients(self._train_discriminator([interp]), [interp])[0]
             gp = tf.sqrt(tf.reduce_mean(tf.square(gradients), axis=1))
-            gp = tf.reduce_mean((gp - 1.0) * 2)
+            gp = tf.reduce_mean((gp - 1.0) * 3)
             self.dis_loss = gp + self.dis_loss_ori
             print("Initialize Training: Build Graph OK")
         # 训练过程可视化
@@ -167,7 +167,7 @@ class OurGAN:
             tf.summary.scalar("loss/d_loss", self.dis_loss)
             tf.summary.scalar("loss/u_loss", self.u_loss)
             if debug_loss:
-                tf.summary.scalar("loss-dev/d_loss_origin", self.dis_loss_ori)
+                tf.summary.scalar("loss-dev/D_origin", self.dis_loss_ori)
                 tf.summary.scalar("loss-dev/gp", gp)
                 tf.summary.scalar("loss-dev/gen_loss_dis_d", gen_loss_dis_d)
                 tf.summary.scalar("loss-dev/gen_loss_dis_c", gen_loss_dis_c)
@@ -175,7 +175,7 @@ class OurGAN:
                 tf.summary.scalar("loss-dev/dis_loss_real_d", dis_loss_real_d)
                 tf.summary.scalar("loss-dev/dis_loss_real_c", dis_loss_real_c)
                 tf.summary.scalar("loss-dev/dis_loss_fake_d", dis_loss_fake_d)
-                tf.summary.scalar("loss-dev/dis_loss_fake_c", dis_loss_fake_c)
+                # tf.summary.scalar("loss-dev/dis_loss_fake_c", dis_loss_fake_c)
                 tf.summary.scalar("loss-dev/u_loss_dis_d", u_loss_dis_d)
                 tf.summary.scalar("loss-dev/u_loss_dis_d2", u_loss_dis_d2)
                 tf.summary.scalar("loss-dev/u_loss_dis_c", u_loss_dis_c)
