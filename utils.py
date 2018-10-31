@@ -71,20 +71,19 @@ def combine_images(generated_images):
 
 
 class CelebA:
-
-    def __init__(self, path, attr_file, batch_size, shape, img_ext=".jpg", attr_filter=None):
+    def __init__(self, args):
         self._img_list = []
-        for dir_name in path:
-            self._img_list += glob(dir_name + "/*" + img_ext)
-        self._attributes_list = self._get_attr_list(attr_file, attr_filter)
-        self.shape = shape
-        self.batch_size = batch_size
-        self.batches = int(len(self._img_list) / batch_size)
+        for dir_name in args.img_path:
+            self._img_list += glob(dir_name + "/*" + args.img_ext)
+        self._attributes_list = self._get_attr_list(args.attr_path, args.attr)
+        self.shape = (args.img_size, args.img_size, args.img_channel)
+        self.batch_size = args.batch_size
+        self.batches = int(len(self._img_list) / args.batch_size)
         self.all_label = ["有短髭", "柳叶眉", "有魅力", "有眼袋", "秃头", "有刘海", "大嘴唇", "大鼻子", "黑发", "金发", "睡眼惺松", "棕发", "浓眉",
                           "丰满", "双下巴", "眼镜", "山羊胡", "白发", "浓妆", "高颧骨", "男性", "嘴轻微张开", "八字胡", "眯缝眼", "完全没有胡子", "鹅蛋脸",
                           "白皮肤", "尖鼻子", "发际线高的", "脸红的", "有鬓脚", "微笑", "直发", "卷发", "戴耳环", "戴帽子", "涂口红", "戴项链", "戴领带",
                           "年轻人"]
-        self.label = [self.all_label[x] for x in attr_filter]
+        self.label = [self.all_label[x] for x in args.attr]
 
     def get_generator(self):
         while True:

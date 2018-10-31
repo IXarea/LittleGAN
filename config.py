@@ -1,10 +1,9 @@
-import argparse
+from argparse import ArgumentParser
 import os
 
-parser = argparse.ArgumentParser()
+parser = ArgumentParser()
 # 操作选择
-parser.add_argument("-m", "--mode", type=str, required=False, help="run mode", default="train", choices=["train", "predict"])
-parser.add_argument("--plot", type=int, required=False, help="print the network info", default=0, choices=[1, 0])
+parser.add_argument("-m", "--mode", type=str, required=False, help="run mode", default="train", choices=["train", "predict", "plot"])
 # 必备参数
 parser.add_argument("-b", "--batch_size", type=int, required=False, help="batch size", default=100)
 parser.add_argument("-n", "--name", type=str, required=False, help="training name", default="default")
@@ -17,13 +16,16 @@ parser.add_argument("--test", type=int, required=False, help="ignore git repo is
 # 其他训练控制参数
 parser.add_argument("--epoch", type=int, required=False, help="epoch times", default=100)
 parser.add_argument("--img_ext", type=str, required=False, help="image extension (with dot)", default=".jpg", choices=[".jpg", ".png"])
-parser.add_argument("--img_size", type=int, required=False, help="image size", default=128)
 parser.add_argument("--img_freq", type=int, required=False, help="image save frequency", default=100)
 parser.add_argument("--model_freq_batch", type=int, required=False, help="save model every n batches", default=500)
 parser.add_argument("--model_freq_epoch", type=int, required=False, help="model save with special name every n epoch", default=1)
 parser.add_argument("--start", type=int, required=False, help="start epoch times", default=1)
 # 模型控制参数
 parser.add_argument("--noise", type=int, required=False, help="noise dimension", default=100)
+parser.add_argument("--attr", type=str, required=False, help="选择训练的属性序号", default="8,15,20,22,26,36,39")
+parser.add_argument("--min_filter", type=int, required=False, help="最少的卷机器过滤器数量", default=16)
+parser.add_argument("--img_size", type=int, required=False, help="image size", default=128)
+parser.add_argument("--img_channel", type=int, required=False, help="模型中图像通道数", default=3)
 parser.add_argument("--part", type=int, required=False, help="instruct if enable partly training", default=1, choices=[1, 0])
 parser.add_argument("--residual", type=int, required=False, help="instruct if use the residual blocks", default=0, choices=[1, 0])
 parser.add_argument("--add_c", type=int, required=False, help="instruct if add condition into G and U-Net", default=2, choices=[0, 2, 4])
@@ -36,4 +38,6 @@ else:
 
 args.img_path = args.img_path.split(",")
 _gpu = args.gpu.split(",")
+_attr = args.attr.split(",")
 args.gpu = [int(item) for item in _gpu if item.isnumeric() and int(item) >= 0]
+args.attr = [int(item) for item in _attr if item.isnumeric() and int(item) >= 0]
