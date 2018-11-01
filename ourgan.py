@@ -9,6 +9,7 @@ from keras.layers import Input, Dense, Reshape, Conv2D, Flatten, LeakyReLU, Drop
 from keras.layers.merge import Concatenate
 from keras.models import Model
 from keras.utils import Progbar, multi_gpu_model, plot_model
+from keras_contrib.layers import InstanceNormalization
 
 from utils import add_sequential_layer, save_img, combine_images, save_weights
 
@@ -25,6 +26,7 @@ class OurGAN:
         self.img_dim = arg.img_size
         self.channels = arg.img_channel
         self.kernel_size = arg.kernel_size
+        self.norm = {"instance": InstanceNormalization, "batch": BatchNormalization}[arg.norm]
         self.conv_filter = [arg.min_filter * 2 ** (4 - x) for x in range(5)]
         self.sess = k.get_session()
 
@@ -65,42 +67,42 @@ class OurGAN:
         self.layers = {
             "d_128_64": [
                 Conv2D(self.conv_filter[3], kernel_size=self.kernel_size, strides=2, padding='same', name="d_128_64_conv"),
-                BatchNormalization(name="d_128_64_norm"), LeakyReLU(alpha=0.2, name="d_128_64_relu"), Dropout(0.25, name="d_128_64_dropout")],
+                self.norm(name="d_128_64_norm"), LeakyReLU(alpha=0.2, name="d_128_64_relu"), Dropout(0.25, name="d_128_64_dropout")],
             "d_64_32": [
                 Conv2D(self.conv_filter[2], kernel_size=self.kernel_size, strides=2, padding='same', name="d_64_32_conv"),
-                BatchNormalization(name="d_64_32_norm"), LeakyReLU(alpha=0.2, name="d_64_32_relu"), Dropout(0.25, name="d_64_32_dropout")],
+                self.norm(name="d_64_32_norm"), LeakyReLU(alpha=0.2, name="d_64_32_relu"), Dropout(0.25, name="d_64_32_dropout")],
             "d_32_16": [
                 Conv2D(self.conv_filter[1], kernel_size=self.kernel_size, strides=2, padding='same', name="d_32_16_conv"),
-                BatchNormalization(name="d_32_16_norm"), LeakyReLU(alpha=0.2, name="d_32_16_relu"), Dropout(0.25, name="d_32_16_dropout")],
+                self.norm(name="d_32_16_norm"), LeakyReLU(alpha=0.2, name="d_32_16_relu"), Dropout(0.25, name="d_32_16_dropout")],
             "d_16_8": [
                 Conv2D(self.conv_filter[0], kernel_size=self.kernel_size, strides=2, padding='same', name="d_16_8_conv"),
-                BatchNormalization(name="d_16_8_norm"), LeakyReLU(alpha=0.2, name="d_16_8_relu"), Dropout(0.25, name="d_16_8_dropout")],
+                self.norm(name="d_16_8_norm"), LeakyReLU(alpha=0.2, name="d_16_8_relu"), Dropout(0.25, name="d_16_8_dropout")],
 
             "g_8_16": [
                 Conv2DTranspose(self.conv_filter[1], kernel_size=self.kernel_size, strides=2, padding='same', name="g_8_16_conv"),
-                BatchNormalization(name="g_8_16_norm"), LeakyReLU(alpha=0.2, name="g_8_16_relu")],
+                self.norm(name="g_8_16_norm"), LeakyReLU(alpha=0.2, name="g_8_16_relu")],
             "g_16_32": [
                 Conv2DTranspose(self.conv_filter[2], kernel_size=self.kernel_size, strides=2, padding='same', name="g_16_32_conv"),
-                BatchNormalization(name="g_16_32_norm"), LeakyReLU(alpha=0.2, name="g_16_32_relu")],
+                self.norm(name="g_16_32_norm"), LeakyReLU(alpha=0.2, name="g_16_32_relu")],
             "g_32_64": [
                 Conv2DTranspose(self.conv_filter[3], kernel_size=self.kernel_size, strides=2, padding='same', name="g_32_64_conv"),
-                BatchNormalization(name="g_32_64_norm"), LeakyReLU(alpha=0.2, name="g_32_64_relu")],
+                self.norm(name="g_32_64_norm"), LeakyReLU(alpha=0.2, name="g_32_64_relu")],
             "g_64_128": [
                 Conv2DTranspose(self.conv_filter[4], kernel_size=self.kernel_size, strides=2, padding='same', name="g_64_128_conv"),
-                BatchNormalization(name="g_64_128_norm"), LeakyReLU(alpha=0.2, name="g_64_128_relu")],
+                self.norm(name="g_64_128_norm"), LeakyReLU(alpha=0.2, name="g_64_128_relu")],
 
             "ug_8_16": [
                 Conv2DTranspose(self.conv_filter[1], kernel_size=self.kernel_size, strides=2, padding='same', name="ug_8_16_conv"),
-                BatchNormalization(name="ug_8_16_norm"), LeakyReLU(alpha=0.2, name="ug_8_16_relu")],
+                self.norm(name="ug_8_16_norm"), LeakyReLU(alpha=0.2, name="ug_8_16_relu")],
             "ug_16_32": [
                 Conv2DTranspose(self.conv_filter[2], kernel_size=self.kernel_size, strides=2, padding='same', name="ug_16_32_conv"),
-                BatchNormalization(name="ug_16_32_norm"), LeakyReLU(alpha=0.2, name="ug_16_32_relu")],
+                self.norm(name="ug_16_32_norm"), LeakyReLU(alpha=0.2, name="ug_16_32_relu")],
             "ug_32_64": [
                 Conv2DTranspose(self.conv_filter[3], kernel_size=self.kernel_size, strides=2, padding='same', name="ug_32_64_conv"),
-                BatchNormalization(name="ug_32_64_norm"), LeakyReLU(alpha=0.2, name="ug_32_64_relu")],
+                self.norm(name="ug_32_64_norm"), LeakyReLU(alpha=0.2, name="ug_32_64_relu")],
             "ug_64_128": [
                 Conv2DTranspose(self.conv_filter[4], kernel_size=self.kernel_size, strides=2, padding='same', name="ug_64_128_conv"),
-                BatchNormalization(name="ug_64_128_norm"), LeakyReLU(alpha=0.2, name="ug_64_128_relu")],
+                self.norm(name="ug_64_128_norm"), LeakyReLU(alpha=0.2, name="ug_64_128_relu")],
 
             "c_8": [Dense(8 ** 2 * 64, name="c_8_dense"), Reshape([8, 8, 64], name="c_8_reshape")],
             "c_16": [Dense(16 ** 2 * 32, name="c_16_dense"), Reshape([16, 16, 32], name="c_16_reshape")],
@@ -249,7 +251,7 @@ class OurGAN:
         x = Dense(self.init_dim ** 2 * self.conv_filter[0])(x)  # 不可使用两次全连接
         x = LeakyReLU(0.2)(x)
         x = Reshape([self.init_dim, self.init_dim, self.conv_filter[0]])(x)
-        x = BatchNormalization()(x)
+        x = self.norm()(x)
 
         # c = add_sequential_layer(self.cond_input, self.layers["c_8"])
         # x = Concatenate()([x, c])

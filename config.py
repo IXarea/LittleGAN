@@ -25,6 +25,7 @@ parser.add_argument("--start", type=int, required=False, help="start epoch times
 # 模型控制参数
 parser.add_argument("--noise", type=int, required=False, help="noise dimension", default=100)
 parser.add_argument("--attr", type=str, required=False, help="选择训练的属性序号", default="8,15,20,22,26,36,39")
+parser.add_argument("--norm", type=str, required=False, help="选择标准化层", default="instance", choices=["instance", "batch"])
 parser.add_argument("--min_filter", type=int, required=False, help="最少的卷机器过滤器数量", default=16)
 parser.add_argument("--img_size", type=int, required=False, help="image size", default=128)
 parser.add_argument("--kernel_size", type=int, required=False, help="卷积核大小", default=5)
