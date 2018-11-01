@@ -1,10 +1,12 @@
-from config import args
-from os import path
-from keras.utils import to_categorical
+from os import path, system
+
 import numpy as np
 from git import Repo
+from keras.utils import to_categorical
+
+from config import args
 from ourgan import OurGAN
-from utils import CelebA
+from utils import CelebA, save_img
 
 cond_dim = len(args.attr)
 print("Application Params: ", args, "\r\n")
@@ -27,21 +29,21 @@ if path.isfile(u_file):
     model.u_net.load_weights(u_file)
 print("Using GPUs: ", args.gpu)
 
-if args.mode is "plot":
+if args.mode == "plot":
     model.plot()
-elif args.mode is "predict":
+elif args.mode == "predict":
     cond = to_categorical(range(cond_dim), cond_dim) * 1.65 - 0.7
     cond = np.tile(cond, (cond_dim, 1))
     noise = np.random.normal(size=[cond_dim, args.noise])
     noise = np.repeat(noise, cond_dim, 0)
-    model.predict(cond, noise)
-elif args.mode is "manual-predict":
+    save_img(model.predict(cond, noise))
+elif args.mode == "manual-predict":
     print("请输入 ", cond_dim, " 个属性(用空格隔开): ")
     cond = [float(x) for x in input().split(" ")]
     if len(cond) == cond_dim:
-        model.predict(np.array([cond]))
-elif args.mode is "train":
-    if args.attr_path is None or args.img_path.__len__() is 0:
+        save_img(model.predict(np.array([cond])))
+elif args.mode == "train":
+    if args.attr_path is None or args.img_path.__len__() == 0:
         raise ValueError("params error!")
     data = CelebA(args)
     print("\r\nImage Flows From: ", args.img_path, "   Image Count: ", data.batch_size * data.batches)
@@ -50,3 +52,8 @@ elif args.mode is "train":
     if repo.is_dirty() and args.test == 0:
         raise EnvironmentError("Git repo is Dirty! Please train after committed.")
     model.fit(data, args)
+elif args.mode is "visual":
+    print("The result path is " + path.abspath("../result/" + args.name))
+    system("start tensorboard --host 0.0.0.0 --logdir " + path.abspath("../result/" + args.name + "/events"))
+else:
+    print("没有此模式：", args.mode)

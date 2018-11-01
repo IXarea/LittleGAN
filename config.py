@@ -3,9 +3,10 @@ from argparse import ArgumentParser
 
 parser = ArgumentParser()
 # 操作选择
-parser.add_argument("-m", "--mode", type=str, required=False, help="run mode", default="train", choices=["train", "predict", "plot"])
+parser.add_argument("-m", "--mode", type=str, required=False, help="run mode", default="train",
+                    choices=["train", "predict", "plot", "manual-predict", "visual"])
 # 必备参数
-parser.add_argument("-b", "--batch_size", type=int, required=False, help="batch size", default=100)
+parser.add_argument("-b", "--batch_size", type=int, required=False, help="batch size", default=32)
 parser.add_argument("-n", "--name", type=str, required=False, help="training name", default="default")
 parser.add_argument("-i", "--img_path", type=str, required=False, help="image path split with ','", default="")
 parser.add_argument("-a", "--attr_path", type=str, required=False, help="attr file path")
