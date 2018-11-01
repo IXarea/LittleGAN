@@ -1,11 +1,12 @@
-from argparse import ArgumentParser
 import os
+from argparse import ArgumentParser
 
 parser = ArgumentParser()
 # 操作选择
-parser.add_argument("-m", "--mode", type=str, required=False, help="run mode", default="train", choices=["train", "predict", "plot"])
+parser.add_argument("-m", "--mode", type=str, required=False, help="run mode", default="train",
+                    choices=["train", "predict", "plot", "manual-predict", "visual"])
 # 必备参数
-parser.add_argument("-b", "--batch_size", type=int, required=False, help="batch size", default=100)
+parser.add_argument("-b", "--batch_size", type=int, required=False, help="batch size", default=32)
 parser.add_argument("-n", "--name", type=str, required=False, help="training name", default="default")
 parser.add_argument("-i", "--img_path", type=str, required=False, help="image path split with ','", default="")
 parser.add_argument("-a", "--attr_path", type=str, required=False, help="attr file path")
@@ -26,6 +27,7 @@ parser.add_argument("--noise", type=int, required=False, help="noise dimension",
 parser.add_argument("--attr", type=str, required=False, help="选择训练的属性序号", default="8,15,20,22,26,36,39")
 parser.add_argument("--min_filter", type=int, required=False, help="最少的卷机器过滤器数量", default=16)
 parser.add_argument("--img_size", type=int, required=False, help="image size", default=128)
+parser.add_argument("--kernel_size", type=int, required=False, help="卷积核大小", default=5)
 parser.add_argument("--img_channel", type=int, required=False, help="模型中图像通道数", default=3)
 parser.add_argument("--part", type=int, required=False, help="是否使用训练（若非默认参数按情况调整分组）", default=1, choices=[1, 0])
 parser.add_argument("--residual", type=int, required=False, help="instruct if use the residual blocks", default=0, choices=[1, 0])

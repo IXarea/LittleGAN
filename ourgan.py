@@ -24,6 +24,7 @@ class OurGAN:
         self.cond_dim = len(arg.attr)
         self.img_dim = arg.img_size
         self.channels = arg.img_channel
+        self.kernel_size = arg.kernel_size
         self.conv_filter = [arg.min_filter * 2 ** (4 - x) for x in range(5)]
         self.sess = k.get_session()
 
@@ -54,7 +55,6 @@ class OurGAN:
     def _setup(self):
 
         self.init_dim = 8
-        self.kernel_size = 5
         self.residual_kernel_size = 5
         self.conv_layers = int(math.log2(self.img_dim / self.init_dim))
 
@@ -139,13 +139,13 @@ class OurGAN:
             gen_loss_dis_d = k.mean(k.square(0.98 - self.dis_fake[0]))
             gen_loss_dis_c = k.mean(k.square(self.p_real_cond - self.dis_fake[1]))
             gen_loss_l1 = k.mean(k.abs(self.p_real_img - self.fake_img_real))
-            self.gen_loss = gen_loss_dis_c + gen_loss_dis_d + 0.05 * gen_loss_l1
+            self.g_loss = gen_loss_dis_c + gen_loss_dis_d + 0.05 * gen_loss_l1
             # 判别器损失函数
             dis_loss_real_d = k.mean(k.square(0.98 - self.dis_real[0]))
             dis_loss_real_c = k.mean(k.square(self.p_real_cond - self.dis_real[1]))
             dis_loss_fake_d = k.mean(k.square(self.dis_fake[0] - 0.02))
-            dis_loss_fake_c = k.mean(k.square(self.p_fake_cond - self.dis_fake[1]))
-            self.dis_loss_ori = dis_loss_fake_c + dis_loss_fake_d + dis_loss_real_c + dis_loss_real_d
+            # dis_loss_fake_c = k.mean(k.square(self.p_fake_cond - self.dis_fake[1]))
+            self.d_loss_ori = dis_loss_fake_d + 2 * dis_loss_real_c + dis_loss_real_d
             # 自编码网络损失函数
             u_loss_dis_d = k.mean(k.square(0.98 - self.dis_u[0]))
             u_loss_dis_c = k.mean(k.square(self.p_real_cond - self.dis_u[1]))
@@ -158,16 +158,16 @@ class OurGAN:
             interp = alpha * self.p_real_img + (1 - alpha) * self.fake_img
             gradients = k.gradients(self._train_discriminator([interp]), [interp])[0]
             gp = tf.sqrt(tf.reduce_mean(tf.square(gradients), axis=1))
-            gp = tf.reduce_mean((gp - 1.0) * 2)
-            self.dis_loss = gp + self.dis_loss_ori
+            gp = tf.reduce_mean((gp - 1.0) * 3)
+            self.d_loss = gp + self.d_loss_ori
             print("Initialize Training: Build Graph OK")
         # 训练过程可视化
         with tf.name_scope("summary"):
-            tf.summary.scalar("loss/g_loss", self.gen_loss)
-            tf.summary.scalar("loss/d_loss", self.dis_loss)
+            tf.summary.scalar("loss/g_loss", self.g_loss)
+            tf.summary.scalar("loss/d_loss", self.d_loss)
             tf.summary.scalar("loss/u_loss", self.u_loss)
             if debug_loss:
-                tf.summary.scalar("loss-dev/d_loss_origin", self.dis_loss_ori)
+                tf.summary.scalar("loss-dev/D_origin", self.d_loss_ori)
                 tf.summary.scalar("loss-dev/gp", gp)
                 tf.summary.scalar("loss-dev/gen_loss_dis_d", gen_loss_dis_d)
                 tf.summary.scalar("loss-dev/gen_loss_dis_c", gen_loss_dis_c)
@@ -175,7 +175,7 @@ class OurGAN:
                 tf.summary.scalar("loss-dev/dis_loss_real_d", dis_loss_real_d)
                 tf.summary.scalar("loss-dev/dis_loss_real_c", dis_loss_real_c)
                 tf.summary.scalar("loss-dev/dis_loss_fake_d", dis_loss_fake_d)
-                tf.summary.scalar("loss-dev/dis_loss_fake_c", dis_loss_fake_c)
+                # tf.summary.scalar("loss-dev/dis_loss_fake_c", dis_loss_fake_c)
                 tf.summary.scalar("loss-dev/u_loss_dis_d", u_loss_dis_d)
                 tf.summary.scalar("loss-dev/u_loss_dis_d2", u_loss_dis_d2)
                 tf.summary.scalar("loss-dev/u_loss_dis_c", u_loss_dis_c)
@@ -197,23 +197,23 @@ class OurGAN:
         with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
             # 全局优化器
             d_updater = tf.train.AdamOptimizer(15e-5, 0.5, 0.9)
-            self.d_full_updater = d_updater.minimize(self.dis_loss, var_list=self.discriminator.trainable_weights)
+            self.d_full_updater = d_updater.minimize(self.d_loss, var_list=self.discriminator.trainable_weights)
             print("Initialize Training: Build Full Optimizer OK: Discriminator")
             g_updater = tf.train.AdamOptimizer(10e-5, 0.5, 0.9)
-            self.g_full_updater = g_updater.minimize(self.gen_loss, var_list=self.generator.trainable_weights)
+            self.g_full_updater = g_updater.minimize(self.g_loss, var_list=self.generator.trainable_weights)
             print("Initialize Training: Build Full Optimizer OK: Generator")
             u_updater = tf.train.AdamOptimizer(5e-5, 0.5, 0.9)
             self.u_full_updater = u_updater.minimize(self.u_loss, var_list=self.u_net.trainable_weights[12:])
             print("Initialize Training: Build Full Optimizer OK: U-Net")
             # 分块优化器
             if part_optimizer:
-                d_train_part = [[self.discriminator.trainable_weights[x] for x in item] for item in self.discriminator_train_list]
-                self.d_part_updater = [d_updater.minimize(self.dis_loss, var_list=x) for x in d_train_part]
+                d_train_part = [[self.discriminator.trainable_weights[x] for x in item] for item in self.d_train_list]
+                self.d_part_updater = [d_updater.minimize(self.d_loss, var_list=x) for x in d_train_part]
                 print("Initialize Training: Build Part Optimizer OK: Discriminator")
-                g_train_part = [[self.generator.trainable_weights[x] for x in item] for item in self.generator_train_list]
-                self.g_part_updater = [g_updater.minimize(self.gen_loss, var_list=x) for x in g_train_part]
+                g_train_part = [[self.generator.trainable_weights[x] for x in item] for item in self.g_train_list]
+                self.g_part_updater = [g_updater.minimize(self.g_loss, var_list=x) for x in g_train_part]
                 print("Initialize Training: Build Part Optimizer OK: Generator")
-                u_train_part = [[self.u_net.trainable_weights[x] for x in item] for item in self.u_net_train_list]
+                u_train_part = [[self.u_net.trainable_weights[x] for x in item] for item in self.u_train_list]
                 self.u_part_updater = [u_updater.minimize(self.u_loss, var_list=x) for x in u_train_part]
                 print("Initialize Training: Build Part Optimizer OK: U-Net")
         self.sess.run(tf.global_variables_initializer())
@@ -234,11 +234,11 @@ class OurGAN:
         # Output whether the image is generated by program
         self.d_output = Dense(1, name="d_img_output", activation='sigmoid')(x)
         # Output if the image's condition
-        self.dc_output = Dense(self.cond_dim, name="d_cond_output", activation="sigmoid")(x)
+        self.d_output_c = Dense(self.cond_dim, name="d_cond_output", activation="sigmoid")(x)
 
-        self.discriminator = Model(inputs=[self.img_input], outputs=[self.d_output, self.dc_output], name="D")
+        self.discriminator = Model(inputs=[self.img_input], outputs=[self.d_output, self.d_output_c], name="D")
         # Todo: This config is only for no residual and add 2 condition
-        self.discriminator_train_list = [
+        self.d_train_list = [
             [16, 17, 18, 19],  # Output Dense
             [12, 13, 14, 15],  # 16->8
             [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],  # 128->64->32->16
@@ -270,7 +270,7 @@ class OurGAN:
         self.g_output = Conv2D(self.channels, kernel_size=self.kernel_size, padding='same', activation='tanh')(x)
         self.generator = Model(inputs=[self.noise_input, self.cond_input], outputs=[self.g_output], name="G")
         # Todo: This config is only for no residual and add 2 condition
-        self.generator_train_list = [
+        self.g_train_list = [
             [10, 11, 12, 13, 14, 15, 16, 17, 20, 21, 22, 23],  # 16->32->64->128 32.6
             [4, 5, 6, 7],  # 8->16 82
             [0, 1, 2, 3],  # Input Image Dense 176
@@ -307,7 +307,7 @@ class OurGAN:
 
         self.u_net = Model([self.img_input, self.cond_input], [x], name="U-Net")
         # Todo: This config is only for no residual and add 2 condition
-        self.u_net_train_list = [
+        self.u_train_list = [
             [18, 19, 20, 21, 24, 25, 26, 27],  # 32->64->128
             [14, 15, 16, 17],  # 16->32
             [12, 13, 22, 23],  # Input Cond
@@ -321,8 +321,7 @@ class OurGAN:
         g_noise = np.random.normal(size=(batch_size, self.noise_dim))
         # Run Train Operation
         _, _, _, d_loss, g_loss, u_loss, summary, fake_img = self.sess.run(
-            [self.current_d_opt, self.current_g_opt, self.current_u_opt, self.dis_loss, self.gen_loss, self.u_loss, self.merge_summary,
-             self.fake_img_real],
+            [self.current_d_opt, self.current_g_opt, self.current_u_opt, self.d_loss, self.g_loss, self.u_loss, self.merge_summary, self.fake_img_real],
             {self.p_real_img: img_true, self.p_real_cond: cond_true, self.p_real_noise: d_noise, self.p_fake_noise: g_noise, self.p_fake_cond: cond_fake})
         # Write to Tensorboard
         self.writer.add_summary(summary, step)
@@ -353,7 +352,7 @@ class OurGAN:
             self._train_discriminator = multi_gpu_model(self.discriminator, gpu_num)
             self._train_u_net = multi_gpu_model(self.u_net, gpu_num)
         if not self.train_setup:
-            self._setup_train(arg.part is 1, arg.debug is 1)
+            self._setup_train(arg.part == 1, arg.debug == 1)
         data_generator = data.get_generator()
         batches = data.batches
         repo = Repo(os.path.dirname(os.path.realpath(__file__)))
@@ -369,7 +368,7 @@ class OurGAN:
                 continue
             os.makedirs(e_log_path)
             self.writer = tf.summary.FileWriter(session=self.sess, logdir=e_log_path)
-            if e is arg.start:
+            if e == arg.start:
                 self.writer.add_graph(self.sess.graph)
             print("Epoch " + str(e) + ":\n")
             progress_bar = Progbar(batches * arg.batch_size)
@@ -379,8 +378,8 @@ class OurGAN:
                 print("\r\nCondition Label:\r\n", data.label, "\r\nEpoch %d Condition:\r\n" % e, a_cond, "\r\n", file=f)
             for b in range(1, 1 + batches):
                 # 切换优化器
-                if arg.part is 1:
-                    if b % 5 is 0:
+                if arg.part == 1:
+                    if b % 5 == 0:
                         self.current_g_opt = self.g_part_updater[b // 5 % g_parts]
                         self.current_d_opt = self.d_part_updater[b // 5 % d_parts]
                         self.current_u_opt = self.u_part_updater[b // 5 % u_parts]
@@ -405,10 +404,9 @@ class OurGAN:
                     with open(os.path.join(self.result_path, "train_cond.log"), "a") as f:
                         print("\r\nCondition Label:\r\n", data.label, "\r\nEpoch %d Batch %d Condition:\r\n" % (e, b), a_cond, "\r\n", file=f)
                 if b % arg.model_freq_batch == 0:
-                    save_weights({"G": self.generator, "D": self.discriminator, "U-Net": self.u_net}, os.path.join(self.result_path, "model"))
+                    save_weights({"G": self.generator, "D": self.discriminator, "U": self.u_net}, os.path.join(self.result_path, "model"))
             if e % arg.model_freq_epoch == 0:
-                save_weights({"G-" + str(e): self.generator, "D-" + str(e): self.discriminator, "U-Net-" + str(e): self.u_net},
-                             os.path.join(self.result_path, "model"))
+                save_weights({"G-%d" % e: self.generator, "D-%d" % e: self.discriminator, "U-%d" % e: self.u_net}, os.path.join(self.result_path, "model"))
 
     def predict(self, condition, noise=None, labels=None):
         batch_size = condition.shape[0]
@@ -425,4 +423,4 @@ class OurGAN:
                 lid += 1
                 print(lid, item, file=f)
         save_img(img, os.path.join(self.result_path, "generate.png"))
-        save_img(img)
+        return img
