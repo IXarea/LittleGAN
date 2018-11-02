@@ -6,7 +6,7 @@ from keras.utils import to_categorical
 
 from config import args
 from ourgan import OurGAN
-from utils import CelebA, save_img
+from utils import CelebA, save_img, combine_images2
 
 cond_dim = len(args.attr)
 print("Application Params: ", args, "\r\n")
@@ -42,6 +42,15 @@ elif args.mode == "manual-predict":
     cond = [float(x) for x in input().split(" ")]
     if len(cond) == cond_dim:
         save_img(model.predict(np.array([cond])))
+elif args.mode == "predict2":
+    for i in range(100):
+        cond = to_categorical(range(cond_dim), cond_dim) * 0.88 + 0.02
+        # cond = np.tile(cond, (cond_dim, 1))
+        noise = np.random.normal(size=[1, args.noise])
+        noise = np.repeat(noise, cond_dim, 0)
+        img = model.predict(cond, noise)
+        img2 = img[[x for x in range(7) if x % 7 in [0, 3, 4, 5]]]
+        save_img(combine_images2(img2, 1, 4), "g-%d.png" % i)
 elif args.mode == "train":
     if args.attr_path is None or args.img_path.__len__() == 0:
         raise ValueError("params error!")

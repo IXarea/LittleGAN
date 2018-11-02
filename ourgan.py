@@ -198,10 +198,10 @@ class OurGAN:
         # 构建优化操作 最小化损失函数(反向传播)
         with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
             # 全局优化器
-            d_updater = tf.train.AdamOptimizer(15e-5, 0.5, 0.9)
+            d_updater = tf.train.AdamOptimizer(10e-5, 0.5, 0.9)
             self.d_full_updater = d_updater.minimize(self.d_loss, var_list=self.discriminator.trainable_weights)
             print("Initialize Training: Build Full Optimizer OK: Discriminator")
-            g_updater = tf.train.AdamOptimizer(10e-5, 0.5, 0.9)
+            g_updater = tf.train.AdamOptimizer(15e-5, 0.5, 0.9)
             self.g_full_updater = g_updater.minimize(self.g_loss, var_list=self.generator.trainable_weights)
             print("Initialize Training: Build Full Optimizer OK: Generator")
             u_updater = tf.train.AdamOptimizer(5e-5, 0.5, 0.9)
@@ -415,7 +415,7 @@ class OurGAN:
         if noise is None:
             noise = np.random.normal(size=[batch_size, self.noise_dim])
         np.set_printoptions(threshold=batch_size * self.noise_dim)
-        img = combine_images(self.generator.predict([noise, condition]))
+        img = self.generator.predict([noise, condition])
         with open(os.path.join(self.result_path, "generate.log"), "w")as f:
             f.write("Generate Image Condition\r\n\r")
             if labels is not None:
@@ -424,5 +424,5 @@ class OurGAN:
             for item in condition:
                 lid += 1
                 print(lid, item, file=f)
-        save_img(img, os.path.join(self.result_path, "generate.png"))
+        save_img(combine_images(img), os.path.join(self.result_path, "generate.png"))
         return img
