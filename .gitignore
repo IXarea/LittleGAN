@@ -5,3 +5,4 @@ result-*/*
 __pycache__
 !.gitkeep
 Thumbs.db
+.vscode
