@@ -34,6 +34,9 @@ parser.add_argument("--part", type=int, required=False, help="是否使用训练
 parser.add_argument("--residual", type=int, required=False, help="instruct if use the residual blocks", default=0, choices=[1, 0])
 parser.add_argument("--add_c", type=int, required=False, help="instruct if add condition into G and U-Net", default=2, choices=[0, 2, 4])
 
+parser.add_argument("--leaky_alpha", type=float, required=False, help="Leaky ReLu中的alpha值", default=0.2)
+parser.add_argument("--dropout_rate", type=float, required=False, help="Dropout层中的dropout rate", default=0.25)
+
 args = parser.parse_args()
 if args.mode != "train":
     os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
