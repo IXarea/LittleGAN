@@ -2,7 +2,7 @@ from os import path, system
 
 import numpy as np
 from git import Repo
-from keras.utils import to_categorical
+from tensorflow.python.keras.utils import to_categorical, Progbar
 
 # 引用
 from config import args
@@ -11,7 +11,7 @@ from utils import CelebA, save_img, combine_images2
 
 print("Application Params: ", args, "\r\n")
 cond_dim = len(args.attr)
-base_path = path.abspath("../result/" + args.name)  # 路径（来源）
+base_path = path.abspath("../SmileGAN-result/" + args.name)  # 路径（来源）
 model = OurGAN(base_path, args)
 # d、g、u的判断（是否存在）
 d_file = path.abspath(base_path + "/model/D_weight.h5")
@@ -47,14 +47,15 @@ elif args.mode == "manual-predict":  # 手动输入属性
         save_img(model.predict(np.array([cond])))
         # new（now used）
 elif args.mode == "predict2":
-    for i in range(100):  # 循环100次
+    bar = Progbar(100)
+    for i in range(1, 101):  # 循环100次
         cond = to_categorical(range(cond_dim), cond_dim) * 0.88 + 0.02
-        # cond = np.tile(cond, (cond_dim, 1))
         noise = np.random.normal(size=[1, args.noise])
         noise = np.repeat(noise, cond_dim, 0)
         img = model.predict(cond, noise)
         img2 = img[[x for x in range(7) if x % 7 in [0, 3, 4, 5]]]
-        save_img(combine_images2(img2, 1, 4), "g-%d.png" % i)
+        save_img(combine_images2(img2, 1, 4), path.join(base_path, "g-%d.png" % i))
+        bar.add(1)
 elif args.mode == "train":
     if args.attr_path is None or args.img_path.__len__() == 0:
         raise ValueError("params error!")

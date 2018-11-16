@@ -1,14 +1,13 @@
 import math
 import os
 
-import keras.backend as k
 import numpy as np
 import tensorflow as tf
 from git import Repo
-from keras.layers import Input, Dense, Reshape, Conv2D, Flatten, LeakyReLU, Dropout, Conv2DTranspose, BatchNormalization
-from keras.layers.merge import Concatenate
-from keras.models import Model
-from keras.utils import Progbar, multi_gpu_model, plot_model
+from tensorflow.python.keras import backend as k
+from tensorflow.python.keras.layers import Input, Dense, Reshape, Conv2D, Flatten, LeakyReLU, Dropout, Conv2DTranspose, BatchNormalization, Concatenate
+from tensorflow.python.keras.models import Model
+from tensorflow.python.keras.utils import Progbar, multi_gpu_model, plot_model
 from keras_contrib.layers import InstanceNormalization
 
 from utils import add_sequential_layer, save_img, combine_images, save_weights

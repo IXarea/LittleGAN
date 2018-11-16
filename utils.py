@@ -5,7 +5,7 @@ from glob import glob
 
 import numpy as np
 from PIL import Image
-from keras.layers import Add, Conv2D, LeakyReLU
+from tensorflow.python.keras.layers import Add, Conv2D, LeakyReLU
 from keras_contrib.layers import InstanceNormalization
 
 
@@ -18,10 +18,10 @@ def add_sequential_layer(layer_in, layers_add, trainable=None):
     return layer_out
 
 
-def residual_block(layer, n_conv, kernel):
+def residual_block(layer, n_conv, kernel, leaky_alpha):
     x = Conv2D(n_conv, kernel_size=kernel, strides=1, padding='same')(layer)
     x = InstanceNormalization()(x)
-    x = LeakyReLU(alpha=0.2)(x)
+    x = LeakyReLU(alpha=leaky_alpha)(x)
     x = Conv2D(int(layer.shape[-1]), kernel_size=kernel, strides=1, padding='same')(x)
     x = Add()([layer, x])
     return x
