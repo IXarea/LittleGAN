@@ -1,5 +1,5 @@
-# Facial GAN
-- This project is the code of the paper "Conditional Facial Image Generation and Adjustment based on GAN"
+# SmileGAN
+- This project is the code of the paper "SmileGAN: Conditional Facial Image Generation and Adjustment"
 - This project use keras to build the model, use tensorflow as backend to train, test, evaluate, predict.
 - We tested and run this project on ubuntu 16.04, cuda 9.0, cudnn 7.3.1, tensorflow 1.11.
 - This project can be run on cpu or nvidia gpu, but we recommend using gpu to train it.
