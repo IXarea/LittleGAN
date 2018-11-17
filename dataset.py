@@ -17,17 +17,18 @@ class CelebA:
                           "年轻人"]
         self.label = [self.all_label[x] for x in args.attr]
         dataset = tf.data.Dataset.from_tensor_slices((self._img_list, self._attributes_list))
-        dataset = dataset.map(self._parse)
+        dataset = dataset.apply(tf.data.experimental.map_and_batch(map_func=self._parse, batch_size=args.batch_size, num_parallel_calls=4))
         dataset = dataset.shuffle(buffer_size=2048)
-        self.dataset = dataset.batch(args.batch_size)
-        self.iterator = self.dataset.make_one_shot_iterator()
+        dataset = dataset.prefetch(buffer_size=2048)
+        self.dataset = dataset.repeat()
+        self.iterator = dataset.make_one_shot_iterator()
 
     def _parse(self, filename, label):
         image = tf.read_file(filename)
         image = tf.image.decode_image(image, self.args.img_channel, dtype=tf.float32)  #
         image.set_shape([self.args.img_dim, self.args.img_dim, self.args.img_channel])
         image = tf.subtract(tf.divide(image, 127.5), 1)
-        return image, label
+        return image, tf.string_to_number(label)
 
     @staticmethod
     def _get_attr_list(attr_file, attr_filter):
