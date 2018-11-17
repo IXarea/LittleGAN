@@ -4,50 +4,65 @@ from tensorflow.contrib.layers import instance_norm
 
 
 class SmileGAN:
-    def __init__(self, dataset, args):
-        self.dataset = dataset
+    def __init__(self, args):
         self.args = args
-        self.pic, self.real_cond = dataset.iterator.get_next()
-        self.p_z = tf.placeholder(tf.float32, [None, args.noise_dim])
-        self.p_c = tf.placeholder(tf.float32, [None, args.cond_dim])
-
-        self._setup_discriminator()
-        self._setup_generator()
-
-    def _setup_discriminator(self):
-        x = self.pic
-
-        for i in range(4):
-            x = tf.layers.conv2d(x, self.args.conv_filter[3 - i], self.args.kernel_size, strides=(2, 2), padding="same")
-            if self.args.norm == "instance":
-                x = instance_norm(x)
-            elif self.args.norm == "batch":
-                x = tf.layers.batch_normalization(x)
-            x = tf.nn.leaky_relu(x, alpha=self.args.leaky_alpha)
-            x = tf.layers.dropout(x, self.args.dropout_rate)
-
-        x = tf.layers.flatten(x)
-        self.output_d = tf.layers.dense(x, 1, activation="sigmoid")
-        self.output_c = tf.layers.dense(x, self.args.cond_dim, activation="sigmoid")
-
-    def _setup_generator(self):
-        x = tf.concat([self.p_z, self.p_c], 1)
-        x = tf.layers.dense(x, self.args.init_dim ** 2 * self.args.conv_filter[0])
-        x = tf.nn.leaky_relu(x, alpha=self.args.leaky_alpha)
-        x = tf.reshape(x, [-1, self.args.init_dim, self.args.init_dim, self.args.conv_filter[0]])
+        print(self.args.norm)
         if self.args.norm == "instance":
-            x = instance_norm(x)
+            self.norm = instance_norm
         elif self.args.norm == "batch":
-            x = tf.layers.batch_normalization(x)
+            self.norm = tf.layers.batch_normalization
+        else:
+            raise NotImplementedError("Normalization Layer Not Implemented")
 
-        for i in range(1, 5):
-            x = tf.layers.conv2d_transpose(x, self.args.conv_filter[i], self.args.kernel_size, strides=(2, 2), padding="same")
-            if self.args.norm == "instance":
-                x = instance_norm(x)
-            elif self.args.norm == "batch":
-                x = tf.layers.batch_normalization(x)
+    def encoder(self, image):
+        with tf.name_scope("Encoder"):
+            x = image
+            for i in range(4):
+                x = tf.layers.conv2d(x, self.args.conv_filter[3 - i], self.args.kernel_size, strides=(2, 2), padding="same")
+                x = self.norm(x)
+                x = tf.nn.leaky_relu(x, alpha=self.args.leaky_alpha)
+                x = tf.layers.dropout(x, self.args.dropout_rate)
+        return x
+
+    def decoder(self, x):
+        with tf.name_scope("Decoder"):
+            for i in range(1, 5):
+                x = tf.layers.conv2d_transpose(x, self.args.conv_filter[i], self.args.kernel_size, strides=(2, 2), padding="same")
+                x = self.norm(x)
+                x = tf.nn.leaky_relu(x, alpha=self.args.leaky_alpha)
+        return x
+
+    def discriminator(self, image):
+        with tf.name_scope("Discriminator"):
+            x = self.encoder(image)
+
+            x = tf.layers.flatten(x)
+            output_d = tf.layers.dense(x, 1, activation="sigmoid")
+            output_c = tf.layers.dense(x, self.args.cond_dim, activation="sigmoid")
+        return output_d, output_c
+
+    def generator(self, noise, cond):
+        with tf.name_scope("Generator"):
+            x = tf.concat([noise, cond], 1)
+            x = tf.layers.dense(x, self.args.init_dim ** 2 * self.args.conv_filter[0])
             x = tf.nn.leaky_relu(x, alpha=self.args.leaky_alpha)
-        self.output_g = tf.layers.conv2d_transpose(x, self.args.img_channel, self.args.kernel_size, strides=(1, 1), padding="same", activation="tanh")
 
-    def _setup_adjuster(self):
-        pass
+            x = tf.reshape(x, [-1, self.args.init_dim, self.args.init_dim, self.args.conv_filter[0]])
+            x = self.norm(x)
+
+            x = self.decoder(x)
+
+            output_g = tf.layers.conv2d_transpose(x, self.args.img_channel, self.args.kernel_size, strides=(1, 1), padding="same", activation="tanh")
+        return output_g
+
+    def adjuster(self, image, cond):
+        with tf.name_scope("Adjuster"):
+            x = self.encoder(image)
+
+            c = tf.layers.dense(cond, self.args.init_dim ** 2 * self.args.conv_filter[0])
+            c = tf.nn.leaky_relu(c, alpha=self.args.leaky_alpha)
+            c = self.norm(c)
+            c = tf.reshape(c, [-1, self.args.init_dim, self.args.init_dim, self.args.conv_filter[0]])
+            x = tf.add(c, x)
+            x = self.decoder(x)
+        return x
