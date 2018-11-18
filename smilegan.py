@@ -16,13 +16,13 @@ class SmileGAN:
 
     def encoder(self, image):
         with tf.name_scope("Encoder"):
-            x = image
+            layers = [image]
             for i in range(4):
-                x = tf.layers.conv2d(x, self.args.conv_filter[3 - i], self.args.kernel_size, strides=(2, 2), padding="same")
+                x = tf.layers.conv2d(layers[i], self.args.conv_filter[3 - i], self.args.kernel_size, strides=(2, 2), padding="same")
                 x = self.norm(x)
                 x = tf.nn.leaky_relu(x, alpha=self.args.leaky_alpha)
-                x = tf.layers.dropout(x, self.args.dropout_rate)
-        return x
+                layers[i + 1] = tf.layers.dropout(x, self.args.dropout_rate)
+        return layers
 
     def decoder(self, x):
         with tf.name_scope("Decoder"):
