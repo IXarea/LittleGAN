@@ -43,11 +43,10 @@ class SmileGAN:
         return output_d, output_c
 
     @staticmethod
-    def discriminator_loss(real_true_c, real_predict_c, real_predict_d, fake_true_c, fake_predict_c, fake_predict_d):
-        return (tf.reduce_mean(tf.square(real_true_c - real_predict_c))
-                + tf.reduce_mean(tf.square(fake_true_c - fake_predict_c))
-                + tf.reduce_mean(tf.square(0.98 - real_predict_d))
-                + tf.reduce_mean(tf.square(0.02 - fake_predict_d)))
+    def discriminator_loss(real_true_c, real_predict_c, real_predict_pr, fake_predict_pr):
+        return (tf.reduce_mean(tf.square(real_true_c - real_predict_c)) * 2
+                + tf.reduce_mean(tf.square(0.98 - real_predict_pr))
+                + tf.reduce_mean(tf.square(0.02 - fake_predict_pr)))
 
     def generator(self, noise, cond):
         with tf.name_scope("Generator"):
