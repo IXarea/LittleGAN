@@ -112,11 +112,22 @@ class Trainer:
         real_pr, real_c = self.model.discriminator(real_img)
         fake_pr, fake_c = self.model.discriminator(fake_img)
 
-        disc_loss = self.model.discriminator_loss(real_cond, real_c, real_pr, fake_pr)
-        gen_loss = self.model.generator_loss(real_cond, fake_c, fake_pr, real_img, fake_img)
-
         adj_real = self.model.adjuster(real_img, real_cond)
         adj_fake = self.model.adjuster(fake_img, real_cond)
         adj_fake_pr, adj_fake_c = self.model.discriminator(adj_fake)
         adj_real_pr, adj_real_c = self.model.discriminator(adj_real)
-        adj_loss = self.model.adjuster_loss(real_cond, adj_real_c, adj_real_pr, adj_fake_c, adj_fake_pr, real_img, adj_real, adj_fake)
+
+        disc_loss = tf.contrib.eager.gradients_function(
+            self.model.discriminator_loss
+        )(real_cond, real_c, real_pr, fake_pr)
+        gen_loss = tf.contrib.eager.gradients_function(
+            self.model.generator_loss
+        )(real_cond, fake_c, fake_pr, real_img, fake_img)
+        adj_loss = tf.contrib.eager.gradients_function(
+            self.model.adjuster_loss
+        )(real_cond, adj_real_c, adj_real_pr, adj_fake_c, adj_fake_pr, real_img, adj_real, adj_fake)
+        return disc_loss, gen_loss, adj_loss
+
+
+
+
