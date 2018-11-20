@@ -2,6 +2,7 @@ import tensorflow as tf
 
 from tensorflow.contrib.layers import instance_norm
 from instance import InstanceNormalization
+import tensorflow.contrib.eager.python.tfe as tfe
 
 
 class SmileGAN:
@@ -93,6 +94,7 @@ class Discriminator(tf.keras.Model):
         self.dense_pr = tf.layers.Dense(1, "sigmoid")
         self.dense_cond = tf.layers.Dense(self.args.cond_dim, "sigmoid")
 
+    @tf.contrib.eager.defun
     def call(self, inputs, training=None, mask=None):
         x = inputs
         encoder_layers = self.encoder(x)
@@ -114,6 +116,7 @@ class Generator(tf.keras.Model):
         self.decoder = decoder
         self.conv = tf.layers.Conv2DTranspose(self.args.img_channel, self.args.kernel_size, strides=(1, 1), padding="same", activation="tanh")
 
+    @tf.contrib.eager.defun
     def call(self, inputs, training=None, mask=None):
         x = tf.concat(inputs, -1)
         x = self.dense(x)
@@ -139,6 +142,7 @@ class Adjuster(tf.keras.Model):
         self.decoder = decoder
         self.conv = tf.layers.Conv2DTranspose(self.args.img_channel, self.args.kernel_size, strides=(1, 1), padding="same", activation="tanh")
 
+    @tf.contrib.eager.defun
     def call(self, inputs, training=None, mask=None):
         image, cond = inputs
         encoder_layers = self.encoder(image)
@@ -152,3 +156,23 @@ class Adjuster(tf.keras.Model):
         return output_adj
 
 
+class Trainer:
+    def __init__(self, args, generator, discriminator, adjuster, dataset):
+        """
+
+        :param FakeArg args:
+        :param Generator generator:
+        :param Discriminator discriminator:
+        :param Adjuster adjuster:
+        :param CelebA dataset:
+        """
+        self.adjuster = adjuster
+        self.dataset = dataset
+        self.discriminator = discriminator
+        self.generator = generator
+        self.generator_optimizer = tf.train.AdamOptimizer(args.lr * 2)
+        self.discriminator_optimizer = tf.train.AdamOptimizer(args.lr * 3)
+        self.adjuster_optimizer = tf.train.AdamOptimizer(args.lr)
+        self.checkpoint = tfe.Checkpoint(discriminator=self.discriminator, generator=self.generator, adjuster=self.adjuster,
+                                         discriminator_optimizer=self.discriminator_optimizer, generator_optimizer=self.generator_optimizer,
+                                         adjuster_optimizer=self.adjuster_optimizer)
