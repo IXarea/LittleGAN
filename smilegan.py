@@ -90,3 +90,52 @@ class SmileGAN:
                 + self.args.l1_lambda * tf.reduce_mean(tf.abs(img_ori - img_adj_real)))
         return real + fake
 
+
+class Encoder(tf.keras.Model):
+    def __init__(self, args):
+        """
+        :param FakeArg args:
+        """
+        super(Encoder, self).__init__()
+        self.args = args
+        for i in range(1, 5):
+            self.__setattr__("conv" + str(i), tf.layers.Conv2D(self.args.conv_filter[4 - i], self.args.kernel_size, 2, "same"))
+            # change to instance
+            self.__setattr__("norm" + str(i), tf.layers.BatchNormalization())
+            self.__setattr__("relu" + str(i), tf.keras.layers.LeakyReLU(self.args.leaky_alpha))
+            self.__setattr__("drop" + str(i), tf.layers.Dropout(self.args.dropout_rate))
+
+    def call(self, inputs, training=None, mask=None):
+        x = inputs
+        outputs = []
+        for i in range(1, 5):
+            x = self.__getattribute__("conv" + str(i))(x)
+            x = self.__getattribute__("norm" + str(i))(x)
+            x = self.__getattribute__("relu" + str(i))(x)
+            x = self.__getattribute__("drop" + str(i))(x)
+            outputs.append(x)
+        return outputs
+
+
+class Decoder(tf.keras.Model):
+    def __init__(self, args):
+        """
+        :param FakeArg args:
+        """
+        super(Decoder, self).__init__()
+        self.args = args
+        for i in range(1, 5):
+            self.__setattr__("conv" + str(i), tf.layers.Conv2DTranspose(self.args.conv_filter[i], self.args.kernel_size, (2, 2), "same"))
+            # change to instance
+            self.__setattr__("norm" + str(i), tf.layers.BatchNormalization())
+            self.__setattr__("relu" + str(i), tf.keras.layers.LeakyReLU(self.args.leaky_alpha))
+
+    def call(self, inputs, training=None, mask=None):
+        x, add = inputs
+        for i in range(1, 5):
+            if add[i - 1] is not None:
+                x = tf.add(x, add[i - 1])
+            x = self.__getattribute__("conv" + str(i))(x)
+            x = self.__getattribute__("norm" + str(i))(x)
+            x = self.__getattribute__("relu" + str(i))(x)
+        return x
