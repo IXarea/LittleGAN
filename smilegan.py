@@ -82,8 +82,12 @@ class SmileGAN:
             output_adj = tf.layers.conv2d_transpose(x, self.args.img_channel, self.args.kernel_size, strides=(1, 1), padding="same", activation="tanh")
         return output_adj
 
-    def adjuster_loss(self, cond_ori, cond_disc, pr_disc, img_ori, img_adj):
-            return (tf.reduce_mean(tf.square(0.98 - pr_disc))
-                    + tf.reduce_mean(tf.square(cond_ori - cond_disc))
-                    + tf.reduce_mean(self.args.l1_lambda * tf.abs(img_ori - img_adj)))
+    def adjuster_loss(self, cond_ori, cond_disc_real, pr_disc_real, cond_disc_fake, pr_disc_fake, img_ori, img_adj_real, img_adj_fake):
+        fake = (tf.reduce_mean(tf.square(0.98 - pr_disc_fake))
+                + tf.reduce_mean(tf.square(cond_ori - cond_disc_fake))
+                + self.args.l1_lambda * tf.reduce_mean(tf.abs(img_ori - img_adj_fake)))
+        real = (tf.reduce_mean(tf.square(0.98 - pr_disc_real))
+                + tf.reduce_mean(tf.square(cond_ori - cond_disc_real))
+                + self.args.l1_lambda * tf.reduce_mean(tf.abs(img_ori - img_adj_real)))
+        return real + fake
 
