@@ -79,7 +79,8 @@ class SmileGAN:
             encoder_layers.reverse()
             encoder_layers.pop()
             x = self.decoder(c, encoder_layers)
-        return x
+            output_adj = tf.layers.conv2d_transpose(x, self.args.img_channel, self.args.kernel_size, strides=(1, 1), padding="same", activation="tanh")
+        return output_adj
 
     def adjuster_loss(self, cond_ori, cond_disc, pr_disc, img_ori, img_adj):
             return (tf.reduce_mean(tf.square(0.98 - pr_disc))
