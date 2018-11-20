@@ -38,9 +38,9 @@ class SmileGAN:
             encoder_layers = self.encoder(image)
 
             x = tf.layers.flatten(encoder_layers[4])
-            output_d = tf.layers.dense(x, 1, activation="sigmoid")
+            output_pr = tf.layers.dense(x, 1, activation="sigmoid")
             output_c = tf.layers.dense(x, self.args.cond_dim, activation="sigmoid")
-        return output_d, output_c
+        return output_pr, output_c
 
     @staticmethod
     def discriminator_loss(real_true_c, real_predict_c, real_predict_pr, fake_predict_pr):
@@ -90,3 +90,33 @@ class SmileGAN:
                 + self.args.l1_lambda * tf.reduce_mean(tf.abs(img_ori - img_adj_real)))
         return real + fake
 
+
+class Trainer:
+    def __init__(self, args, model, dataset):
+        """
+        :param FakeArg args:
+        :param SmileGAN model:
+        :param CelebA dataset:
+        """
+        self.generator_optimizer = tf.train.AdamOptimizer(args.lr * 2)
+        self.discriminator_optimizer = tf.train.AdamOptimizer(args.lr * 3)
+        self.adjuster_optimizer = tf.train.AdamOptimizer(args.lr)
+        self.model = model
+        self.dataset = dataset
+        self.args = args
+
+    def calc_loss(self):
+        real_img, real_cond = self.dataset.iterator.get_next()
+        noise = tf.random_normal([self.args.batch_size, self.args.noise_dim])
+        fake_img = self.model.generator(noise, real_cond)
+        real_pr, real_c = self.model.discriminator(real_img)
+        fake_pr, fake_c = self.model.discriminator(fake_img)
+
+        disc_loss = self.model.discriminator_loss(real_cond, real_c, real_pr, fake_pr)
+        gen_loss = self.model.generator_loss(real_cond, fake_c, fake_pr, real_img, fake_img)
+
+        adj_real = self.model.adjuster(real_img, real_cond)
+        adj_fake = self.model.adjuster(fake_img, real_cond)
+        adj_fake_pr, adj_fake_c = self.model.discriminator(adj_fake)
+        adj_real_pr, adj_real_c = self.model.discriminator(adj_real)
+        adj_loss = self.model.adjuster_loss(real_cond, adj_real_c, adj_real_pr, adj_fake_c, adj_fake_pr, real_img, adj_real, adj_fake)
