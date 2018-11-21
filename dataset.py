@@ -24,9 +24,10 @@ class CelebA:
 
     def _parse(self, filename, label):
         image = tf.read_file(filename)
-        image = tf.image.decode_image(image, self.args.img_channel, dtype=tf.float32)  #
+        image = tf.image.decode_image(image, self.args.img_channel)
         image.set_shape([self.args.img_dim, self.args.img_dim, self.args.img_channel])
-        image = tf.subtract(tf.divide(image, 127.5), 1)
+        image = tf.cast(image, tf.float32)
+        image = self.data_rescale(image)
         return image, tf.string_to_number(label)
 
     @staticmethod
@@ -44,3 +45,11 @@ class CelebA:
     def get_new_iterator(self):
         self.iterator = self.dataset.make_one_shot_iterator()
         return self.iterator
+
+    @staticmethod
+    def data_rescale(x):
+        return tf.subtract(tf.divide(x, 127.5), 1)
+
+    @staticmethod
+    def inverse_rescale(y):
+        return tf.round(tf.multiply(tf.add(y, 1), 127.5))

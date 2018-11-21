@@ -1,7 +1,7 @@
 import tensorflow as tf
 from instance import InstanceNormalization
-
-tfe = tf.contrib.eager
+from os import path, makedirs
+from utils import save_image
 
 
 class Encoder(tf.keras.Model):
@@ -125,24 +125,28 @@ class Adjuster(tf.keras.Model):
 class Trainer:
     def __init__(self, args, generator, discriminator, adjuster, dataset):
         """
-
         :param FakeArg args:
         :param Generator generator:
         :param Discriminator discriminator:
         :param Adjuster adjuster:
         :param CelebA dataset:
         """
+        self.args = args
+
         self.adjuster = adjuster
         self.dataset = dataset
         self.discriminator = discriminator
         self.generator = generator
-        self.args = args
+
         self.generator_optimizer = tf.train.AdamOptimizer(args.lr * 2)
         self.discriminator_optimizer = tf.train.AdamOptimizer(args.lr * 3)
         self.adjuster_optimizer = tf.train.AdamOptimizer(args.lr)
-        self.checkpoint = tfe.Checkpoint(discriminator=self.discriminator, generator=self.generator, adjuster=self.adjuster,
-                                         discriminator_optimizer=self.discriminator_optimizer, generator_optimizer=self.generator_optimizer,
-                                         adjuster_optimizer=self.adjuster_optimizer)
+        self.checkpoint = tf.train.Checkpoint(discriminator=self.discriminator, generator=self.generator, adjuster=self.adjuster,
+                                              discriminator_optimizer=self.discriminator_optimizer, generator_optimizer=self.generator_optimizer,
+                                              adjuster_optimizer=self.adjuster_optimizer)
+        if path.isdir(path.join(self.args.result_dir, "checkpoint")) and self.args.restore:
+            self.checkpoint.restore(tf.train.latest_checkpoint(path.join(self.args.result_dir, "checkpoint")))
+        self.make_result_dir()
 
     @staticmethod
     def discriminator_loss(real_true_c, real_predict_c, real_predict_pr, fake_predict_pr):
@@ -164,25 +168,72 @@ class Trainer:
                 + self.args.l1_lambda * tf.reduce_mean(tf.abs(img_ori - img_adj_real)))
         return real + fake
 
-    def _train_step(self):
+    def _train_step(self, include_img):
         real_img, real_cond = self.dataset.iterator.get_next()
         noise = tf.random_normal([self.args.batch_size, self.args.noise_dim])
-        with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape, tf.GradientTape() as adj_tape:
+        with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:  # , tf.GradientTape() as adj_tape:
             fake_img = self.generator([noise, real_cond])
             real_pr, real_c = self.discriminator(real_img)
             fake_pr, fake_c = self.discriminator(fake_img)
 
-            # adj_real = self.adjuster([real_img, real_cond])
-            # adj_fake = self.adjuster([fake_img, real_cond])
-            # adj_fake_pr, adj_fake_c = self.discriminator(adj_fake)
-            # adj_real_pr, adj_real_c = self.discriminator(adj_real)
-
             disc_loss = self.discriminator_loss(real_cond, real_c, real_pr, fake_pr)
             gen_loss = self.generator_loss(real_cond, fake_c, fake_pr, real_img, fake_img)
-            # adj_loss = self.adjuster_loss(real_cond, adj_real_c, adj_real_pr, adj_fake_c, adj_fake_pr, real_img, adj_real, adj_fake)
 
         gradients_of_gen = gen_tape.gradient(gen_loss, self.generator.weights)
         gradients_of_disc = disc_tape.gradient(disc_loss, self.discriminator.weights)
-        # gradients_of_adj = adj_tape.gradient(adj_loss, self.adjuster.weights)
+
         self.generator_optimizer.apply_gradients(zip(gradients_of_gen, self.generator.weights))
         self.discriminator_optimizer.apply_gradients(zip(gradients_of_disc, self.discriminator.weights))
+
+        if self.args.train_adj:
+            with tf.GradientTape() as adj_tape:
+                adj_real_img = self.adjuster([real_img, real_cond])
+                adj_fake_img = self.adjuster([fake_img, real_cond])
+                adj_fake_pr, adj_fake_c = self.discriminator(adj_fake_img)
+                adj_real_pr, adj_real_c = self.discriminator(adj_real_img)
+
+                adj_loss = self.adjuster_loss(real_cond, adj_real_c, adj_real_pr, adj_fake_c, adj_fake_pr, real_img, adj_real_img, adj_fake_img)
+                gradients_of_adj = adj_tape.gradient(adj_loss, self.adjuster.weights)
+            self.adjuster_optimizer.apply_gradients(zip(gradients_of_adj, self.adjuster.weights))
+
+            if include_img:
+                return fake_img, adj_real_img, adj_fake_img, gen_loss, disc_loss, adj_loss
+            else:
+                return None, None, None, gen_loss, disc_loss, adj_loss
+        else:
+            if include_img:
+                return fake_img, None, None, gen_loss, disc_loss, None
+            else:
+                return None, None, None, gen_loss, disc_loss, None
+
+    def train(self):
+        loss_label = ["LossG", "LossD"]
+        if self.args.train_adj:
+            loss_label.append("LossA")
+        for e in range(self.args.start_epoch, self.args.epoch):
+            prog = tf.keras.utils.Progbar(self.dataset.batches * self.args.batch_size, stateful_metrics=loss_label)
+            self.dataset.get_new_iterator()
+            for b in range(self.dataset.batches):
+                export_img = b // self.args.freq_batch is 0
+
+                result = self._train_step(export_img)
+
+                losses = result[3:3 + len(loss_label)]
+                prog.add(self.args.batch_size, zip(loss_label, losses))
+
+                if export_img:
+                    gen_img = result[0]
+                    save_image(gen_img, path.join(self.args.result_dir, "image", "gen", "%d-%d.jpg" % (e, b)))
+
+                    if self.args.train_adj:
+                        adj_img = tf.concat(result[1:3], 0)
+                        save_image(adj_img, path.join(self.args.result_dir, "image", "adj", "%d-%d.jpg" % (e, b)))
+
+            self.checkpoint.save(path.join(self.args.result_dir, "checkpoint", str(e)))
+
+
+    def make_result_dir(self):
+        dirs = [".", "image/gen", "image/adj", "image/ev_adj", "image/ev_gen", "checkpoint", "event"]
+        for item in dirs:
+            if not path.exists(path.join(self.args.result_dir, item)):
+                makedirs(path.join(self.args.result_dir, item))
