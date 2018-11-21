@@ -19,8 +19,7 @@ class CelebA:
         dataset = tf.data.Dataset.from_tensor_slices((self._img_list, self._attributes_list))
         dataset = dataset.apply(tf.data.experimental.map_and_batch(map_func=self._parse, batch_size=args.batch_size, num_parallel_calls=4))
         dataset = dataset.shuffle(buffer_size=2048)
-        dataset = dataset.prefetch(buffer_size=2048)
-        self.dataset = dataset.repeat()
+        self.dataset = dataset.prefetch(buffer_size=2048)
         self.iterator = dataset.make_one_shot_iterator()
 
     def _parse(self, filename, label):
@@ -41,3 +40,7 @@ class CelebA:
             else:
                 attributes_list.append([attr_raw[x] for x in attr_filter])
         return attributes_list
+
+    def get_new_iterator(self):
+        self.iterator = self.dataset.make_one_shot_iterator()
+        return self.iterator

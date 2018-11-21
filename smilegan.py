@@ -1,41 +1,7 @@
 import tensorflow as tf
-
-from tensorflow.contrib.layers import instance_norm
 from instance import InstanceNormalization
-import tensorflow.contrib.eager.python.tfe as tfe
 
-
-class SmileGAN:
-    def __init__(self, args):
-        self.args = args
-        if self.args.norm == "instance":
-            self.norm = instance_norm
-        elif self.args.norm == "batch":
-            self.norm = tf.layers.batch_normalization
-        else:
-            raise NotImplementedError("Normalization Layer Not Implemented")
-
-    @staticmethod
-    def discriminator_loss(real_true_c, real_predict_c, real_predict_pr, fake_predict_pr):
-        return (tf.reduce_mean(tf.square(real_true_c - real_predict_c)) * 2
-                + tf.reduce_mean(tf.square(0.98 - real_predict_pr))
-                + tf.reduce_mean(tf.square(0.02 - fake_predict_pr)))
-
-    def generator_loss(self, cond_ori, cond_disc, pr_disc, img_ori, img_gen):
-        return (tf.reduce_mean(tf.square(0.98 - pr_disc))
-                + tf.reduce_mean(tf.square(cond_ori - cond_disc))
-                + tf.reduce_mean(self.args.l1_lambda * tf.abs(img_ori - img_gen)))
-
-
-
-    def adjuster_loss(self, cond_ori, cond_disc_real, pr_disc_real, cond_disc_fake, pr_disc_fake, img_ori, img_adj_real, img_adj_fake):
-        fake = (tf.reduce_mean(tf.square(0.98 - pr_disc_fake))
-                + tf.reduce_mean(tf.square(cond_ori - cond_disc_fake))
-                + self.args.l1_lambda * tf.reduce_mean(tf.abs(img_ori - img_adj_fake)))
-        real = (tf.reduce_mean(tf.square(0.98 - pr_disc_real))
-                + tf.reduce_mean(tf.square(cond_ori - cond_disc_real))
-                + self.args.l1_lambda * tf.reduce_mean(tf.abs(img_ori - img_adj_real)))
-        return real + fake
+tfe = tf.contrib.eager
 
 
 class Encoder(tf.keras.Model):
@@ -170,9 +136,53 @@ class Trainer:
         self.dataset = dataset
         self.discriminator = discriminator
         self.generator = generator
+        self.args = args
         self.generator_optimizer = tf.train.AdamOptimizer(args.lr * 2)
         self.discriminator_optimizer = tf.train.AdamOptimizer(args.lr * 3)
         self.adjuster_optimizer = tf.train.AdamOptimizer(args.lr)
         self.checkpoint = tfe.Checkpoint(discriminator=self.discriminator, generator=self.generator, adjuster=self.adjuster,
                                          discriminator_optimizer=self.discriminator_optimizer, generator_optimizer=self.generator_optimizer,
                                          adjuster_optimizer=self.adjuster_optimizer)
+
+    @staticmethod
+    def discriminator_loss(real_true_c, real_predict_c, real_predict_pr, fake_predict_pr):
+        return (tf.reduce_mean(tf.square(real_true_c - real_predict_c)) * 2
+                + tf.reduce_mean(tf.square(0.98 - real_predict_pr))
+                + tf.reduce_mean(tf.square(0.02 - fake_predict_pr)))
+
+    def generator_loss(self, cond_ori, cond_disc, pr_disc, img_ori, img_gen):
+        return (tf.reduce_mean(tf.square(0.98 - pr_disc))
+                + tf.reduce_mean(tf.square(cond_ori - cond_disc))
+                + tf.reduce_mean(self.args.l1_lambda * tf.abs(img_ori - img_gen)))
+
+    def adjuster_loss(self, cond_ori, cond_disc_real, pr_disc_real, cond_disc_fake, pr_disc_fake, img_ori, img_adj_real, img_adj_fake):
+        fake = (tf.reduce_mean(tf.square(0.98 - pr_disc_fake))
+                + tf.reduce_mean(tf.square(cond_ori - cond_disc_fake))
+                + self.args.l1_lambda * tf.reduce_mean(tf.abs(img_ori - img_adj_fake)))
+        real = (tf.reduce_mean(tf.square(0.98 - pr_disc_real))
+                + tf.reduce_mean(tf.square(cond_ori - cond_disc_real))
+                + self.args.l1_lambda * tf.reduce_mean(tf.abs(img_ori - img_adj_real)))
+        return real + fake
+
+    def _train_step(self):
+        real_img, real_cond = self.dataset.iterator.get_next()
+        noise = tf.random_normal([self.args.batch_size, self.args.noise_dim])
+        with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape, tf.GradientTape() as adj_tape:
+            fake_img = self.generator([noise, real_cond])
+            real_pr, real_c = self.discriminator(real_img)
+            fake_pr, fake_c = self.discriminator(fake_img)
+
+            # adj_real = self.adjuster([real_img, real_cond])
+            # adj_fake = self.adjuster([fake_img, real_cond])
+            # adj_fake_pr, adj_fake_c = self.discriminator(adj_fake)
+            # adj_real_pr, adj_real_c = self.discriminator(adj_real)
+
+            disc_loss = self.discriminator_loss(real_cond, real_c, real_pr, fake_pr)
+            gen_loss = self.generator_loss(real_cond, fake_c, fake_pr, real_img, fake_img)
+            # adj_loss = self.adjuster_loss(real_cond, adj_real_c, adj_real_pr, adj_fake_c, adj_fake_pr, real_img, adj_real, adj_fake)
+
+        gradients_of_gen = gen_tape.gradient(gen_loss, self.generator.weights)
+        gradients_of_disc = disc_tape.gradient(disc_loss, self.discriminator.weights)
+        # gradients_of_adj = adj_tape.gradient(adj_loss, self.adjuster.weights)
+        self.generator_optimizer.apply_gradients(zip(gradients_of_gen, self.generator.weights))
+        self.discriminator_optimizer.apply_gradients(zip(gradients_of_disc, self.discriminator.weights))
