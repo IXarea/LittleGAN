@@ -201,9 +201,11 @@ class Trainer:
         gradients_of_gen = gen_tape.gradient(gen_loss, self.generator.weights)
         gradients_of_disc = disc_tape.gradient(disc_loss, self.discriminator.weights)
 
+        if self.args.use_clip:
+            gradients_of_disc = [tf.clip_by_value(x, -self.args.clip_range, self.args.clip_range) for x in gradients_of_disc]
+
         self.generator_optimizer.apply_gradients(zip(gradients_of_gen, self.generator.weights))
         self.discriminator_optimizer.apply_gradients(zip(gradients_of_disc, self.discriminator.weights))
-
         if self.args.train_adj:
             with tf.GradientTape() as adj_tape:
                 adj_real_img = self.adjuster([real_img, real_cond])
@@ -232,7 +234,7 @@ class Trainer:
         for e in range(self.args.start_epoch, self.args.epoch):
             prog = tf.keras.utils.Progbar(self.dataset.batches * self.args.batch_size, stateful_metrics=loss_label)
             self.dataset.get_new_iterator()
-            for b in range(self.dataset.batches):
+            for b in range(1, self.dataset.batches + 1):
                 export_img = b % self.args.freq_batch is 0
                 try:
                     result = self._train_step(export_img)
