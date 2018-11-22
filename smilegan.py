@@ -227,10 +227,17 @@ class Trainer:
             else:
                 return None, None, None, gen_loss, disc_loss, None
 
+    def interrupted(self):
+        self.checkpoint.save(path.join(self.args.result_dir, "checkpoint", "interrupt"))
+        import sys
+        sys.exit(1)
+
     def train(self):
         loss_label = ["LossG", "LossD"]
         if self.args.train_adj:
             loss_label.append("LossA")
+        import signal
+        signal.signal(signal.SIGINT, self.interrupted)
         for e in range(self.args.start_epoch, self.args.epoch):
             prog = tf.keras.utils.Progbar(self.dataset.batches * self.args.batch_size, stateful_metrics=loss_label)
             self.dataset.get_new_iterator()
