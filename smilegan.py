@@ -133,11 +133,12 @@ class Trainer:
         """
         self.args = args
 
-        self.adjuster = adjuster
         self.dataset = dataset
+        self.adjuster = adjuster
         self.discriminator = discriminator
         self.generator = generator
-
+        self.models = [self.discriminator, self.generator, self.adjuster]
+        self._test()
         self.generator_optimizer = tf.train.AdamOptimizer(args.lr * 2)
         self.discriminator_optimizer = tf.train.AdamOptimizer(args.lr * 3)
         self.adjuster_optimizer = tf.train.AdamOptimizer(args.lr)
@@ -147,6 +148,23 @@ class Trainer:
         if path.isdir(path.join(self.args.result_dir, "checkpoint")) and self.args.restore:
             self.checkpoint.restore(tf.train.latest_checkpoint(path.join(self.args.result_dir, "checkpoint")))
         self.make_result_dir()
+        self.part_groups = {
+            "Generator": [range(0, 4), range(4, 8), range(8, 22)],
+            "Discriminator": [range(0, 12), range(12, 16), range(16, 20)],
+            "Adjuster": [range(16, 20), range(36, 38)]
+        }
+
+        self.part_weights = {}
+        for model in self.models:
+            name = model.__class__.__name__
+            self.part_weights[name] = [[model.weights[layer] for layer in group] for group in self.part_groups[name]]
+
+    def _test(self):
+        real_img, real_cond = self.dataset.iterator.get_next()
+        noise = tf.random_normal([real_cond.shape[0], self.args.noise_dim])
+        self.discriminator(real_img)
+        self.generator([noise, real_cond])
+        self.adjuster([real_img, real_cond])
 
     @staticmethod
     def discriminator_loss(real_true_c, real_predict_c, real_predict_pr, fake_predict_pr):
@@ -182,7 +200,15 @@ class Trainer:
         """
         raise NotImplementedError("GP didn't implemented on eager mode")
 
-    def _train_step(self, include_img):
+    def _get_train_weight(self, model, batch_no):
+        if self.args.use_partition and batch_no % (self.args.partition + 1) is 0:
+            name = model.__class__.__name__
+            weights = self.part_weights[name]
+            return weights[(batch_no // (self.args.partition + 1)) % weights.__len__()]
+
+        return model.weights
+
+    def _train_step(self, batch_no, include_img):
         real_img, real_cond = self.dataset.iterator.get_next()
         noise = tf.random_normal([real_cond.shape[0], self.args.noise_dim])
         with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:  # , tf.GradientTape() as adj_tape:
@@ -198,14 +224,14 @@ class Trainer:
                 disc_gp = self.gradient_penalty(real_img, fake_img, self.discriminator)
                 disc_loss = -disc_loss + disc_gp * self.args.gp_weight
 
-        gradients_of_gen = gen_tape.gradient(gen_loss, self.generator.weights)
-        gradients_of_disc = disc_tape.gradient(disc_loss, self.discriminator.weights)
+        gradients_of_gen = gen_tape.gradient(gen_loss, self._get_train_weight(self.generator, batch_no))
+        gradients_of_disc = disc_tape.gradient(disc_loss, self._get_train_weight(self.discriminator, batch_no))
 
         if self.args.use_clip:
             gradients_of_disc = [tf.clip_by_value(x, -self.args.clip_range, self.args.clip_range) for x in gradients_of_disc]
 
-        self.generator_optimizer.apply_gradients(zip(gradients_of_gen, self.generator.weights))
-        self.discriminator_optimizer.apply_gradients(zip(gradients_of_disc, self.discriminator.weights))
+        self.generator_optimizer.apply_gradients(zip(gradients_of_gen, self._get_train_weight(self.generator, batch_no)))
+        self.discriminator_optimizer.apply_gradients(zip(gradients_of_disc, self._get_train_weight(self.discriminator, batch_no)))
         if self.args.train_adj:
             with tf.GradientTape() as adj_tape:
                 adj_real_img = self.adjuster([real_img, real_cond])
@@ -214,8 +240,8 @@ class Trainer:
                 adj_real_pr, adj_real_c = self.discriminator(adj_real_img)
 
                 adj_loss = self.adjuster_loss(real_cond, adj_real_c, adj_real_pr, adj_fake_c, adj_fake_pr, real_img, adj_real_img, adj_fake_img)
-            gradients_of_adj = adj_tape.gradient(adj_loss, self.adjuster.weights)
-            self.adjuster_optimizer.apply_gradients(zip(gradients_of_adj, self.adjuster.weights))
+            gradients_of_adj = adj_tape.gradient(adj_loss, self._get_train_weight(self.adjuster, batch_no))
+            self.adjuster_optimizer.apply_gradients(zip(gradients_of_adj, self._get_train_weight(self.adjuster, batch_no)))
 
             if include_img:
                 return fake_img, adj_real_img, adj_fake_img, gen_loss, disc_loss, adj_loss
@@ -238,13 +264,13 @@ class Trainer:
             loss_label.append("LossA")
         import signal
         signal.signal(signal.SIGINT, self.interrupted)
-        for e in range(self.args.start_epoch, self.args.epoch):
+        for e in range(1, self.args.epoch):
             prog = tf.keras.utils.Progbar(self.dataset.batches * self.args.batch_size, stateful_metrics=loss_label)
             self.dataset.get_new_iterator()
             for b in range(1, self.dataset.batches + 1):
                 export_img = b % self.args.freq_batch is 0
                 try:
-                    result = self._train_step(export_img)
+                    result = self._train_step(b, export_img)
                 except tf.errors.OutOfRangeError:
                     break
                 losses = result[3:3 + len(loss_label)]
