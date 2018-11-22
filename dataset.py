@@ -18,8 +18,8 @@ class CelebA:
         self.label = [self.all_label[x] for x in args.attr]
         dataset = tf.data.Dataset.from_tensor_slices((self._img_list, self._attributes_list))
         dataset = dataset.apply(tf.data.experimental.map_and_batch(map_func=self._parse, batch_size=args.batch_size, num_parallel_calls=4))
-        dataset = dataset.shuffle(buffer_size=2048)
-        self.dataset = dataset.prefetch(buffer_size=2048)
+        dataset = dataset.shuffle(buffer_size=self.args.prefetch)
+        self.dataset = dataset.prefetch(buffer_size=self.args.prefetch)
         self.iterator = dataset.make_one_shot_iterator()
 
     def _parse(self, filename, label):

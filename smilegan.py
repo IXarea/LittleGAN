@@ -168,9 +168,23 @@ class Trainer:
                 + self.args.l1_lambda * tf.reduce_mean(tf.abs(img_ori - img_adj_real)))
         return real + fake
 
+    @staticmethod
+    def gradient_penalty(real, fake, f):
+        """
+            with tf.GradientTape() as gp_tape:
+                alpha = tf.random_uniform(shape=[real.shape[0], 1, 1, 1])
+                inter = real + alpha * (fake - real)
+                pred = f(inter)
+            gradients = gp_tape.gradient(pred, f.weights)[0]
+            slopes = tf.sqrt(tf.reduce_sum(tf.square(gradients), reduction_indices=range(1, inter.shape.ndims)))
+            gp = tf.reduce_mean((slopes - 1.) ** 2)
+            return gp
+        """
+        raise NotImplementedError("GP didn't implemented on eager mode")
+
     def _train_step(self, include_img):
         real_img, real_cond = self.dataset.iterator.get_next()
-        noise = tf.random_normal([self.args.batch_size, self.args.noise_dim])
+        noise = tf.random_normal([real_cond.shape[0], self.args.noise_dim])
         with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:  # , tf.GradientTape() as adj_tape:
             fake_img = self.generator([noise, real_cond])
             real_pr, real_c = self.discriminator(real_img)
@@ -178,6 +192,11 @@ class Trainer:
 
             disc_loss = self.discriminator_loss(real_cond, real_c, real_pr, fake_pr)
             gen_loss = self.generator_loss(real_cond, fake_c, fake_pr, real_img, fake_img)
+            if self.args.use_gp:
+                # todo: Is gp must use on cross-entropy
+                # todo: explore how to gp on eager mode
+                disc_gp = self.gradient_penalty(real_img, fake_img, self.discriminator)
+                disc_loss = -disc_loss + disc_gp * self.args.gp_weight
 
         gradients_of_gen = gen_tape.gradient(gen_loss, self.generator.weights)
         gradients_of_disc = disc_tape.gradient(disc_loss, self.discriminator.weights)
@@ -193,7 +212,7 @@ class Trainer:
                 adj_real_pr, adj_real_c = self.discriminator(adj_real_img)
 
                 adj_loss = self.adjuster_loss(real_cond, adj_real_c, adj_real_pr, adj_fake_c, adj_fake_pr, real_img, adj_real_img, adj_fake_img)
-                gradients_of_adj = adj_tape.gradient(adj_loss, self.adjuster.weights)
+            gradients_of_adj = adj_tape.gradient(adj_loss, self.adjuster.weights)
             self.adjuster_optimizer.apply_gradients(zip(gradients_of_adj, self.adjuster.weights))
 
             if include_img:
@@ -214,10 +233,11 @@ class Trainer:
             prog = tf.keras.utils.Progbar(self.dataset.batches * self.args.batch_size, stateful_metrics=loss_label)
             self.dataset.get_new_iterator()
             for b in range(self.dataset.batches):
-                export_img = b // self.args.freq_batch is 0
-
-                result = self._train_step(export_img)
-
+                export_img = b % self.args.freq_batch is 0
+                try:
+                    result = self._train_step(export_img)
+                except tf.errors.OutOfRangeError:
+                    break
                 losses = result[3:3 + len(loss_label)]
                 prog.add(self.args.batch_size, zip(loss_label, losses))
 
@@ -231,9 +251,26 @@ class Trainer:
 
             self.checkpoint.save(path.join(self.args.result_dir, "checkpoint", str(e)))
 
-
     def make_result_dir(self):
         dirs = [".", "image/gen", "image/adj", "image/ev_adj", "image/ev_gen", "checkpoint", "event"]
         for item in dirs:
             if not path.exists(path.join(self.args.result_dir, item)):
                 makedirs(path.join(self.args.result_dir, item))
+
+    def plot(self):
+        # todo: the shapes and the graph doesn't ok
+        with open(self.args.result_dir + "/models.txt", "w") as f:
+            def print_fn(content):
+                print(content, file=f)
+
+            self._train_step(False)
+            model = [self.discriminator.encoder, self.generator.decoder, self.discriminator, self.generator]
+            if self.args.train_adj:
+                model.append(self.adjuster)
+            for item in model:
+                name = item.__class__.__name__
+                pad_len = int(0.5 * (53 - name.__len__()))
+                print_fn("=" * pad_len + "   Model: " + name + "  " + "=" * pad_len)
+                item.summary(print_fn=print_fn)
+                print_fn("\n")
+                tf.keras.utils.plot_model(item, to_file=path.join(self.args.result_dir, "image", "%s.png" % name), show_shapes=True)
