@@ -11,7 +11,7 @@ from utils import CelebA, save_img, combine_images2
 
 print("Application Params: ", args, "\r\n")
 cond_dim = len(args.attr)
-base_path = path.abspath("../SmileGAN-result/" + args.name)  # 路径（来源）
+base_path = path.abspath("../Little-result/" + args.name)  # 路径（来源）
 model = OurGAN(base_path, args)
 # d、g、u的判断（是否存在）
 d_file = path.abspath(base_path + "/model/D_weight.h5")
