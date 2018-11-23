@@ -2,6 +2,7 @@ import tensorflow as tf
 from instance import InstanceNormalization
 from os import path, makedirs
 from utils import save_image
+import json
 
 
 class Encoder(tf.keras.Model):
@@ -80,7 +81,7 @@ class Generator(tf.keras.Model):
         self.dense = tf.layers.Dense(self.args.init_dim ** 2 * self.args.conv_filter[0])
         self.norm = InstanceNormalization()
         self.decoder = decoder
-        self.conv = tf.layers.Conv2DTranspose(self.args.img_channel, self.args.kernel_size, strides=(1, 1), padding="same", activation="tanh")
+        self.conv = tf.layers.Conv2DTranspose(self.args.image_channel, self.args.kernel_size, strides=(1, 1), padding="same", activation="tanh")
 
     @tf.contrib.eager.defun
     def call(self, inputs, training=None, mask=None):
@@ -90,8 +91,8 @@ class Generator(tf.keras.Model):
         x = tf.reshape(x, [-1, self.args.init_dim, self.args.init_dim, self.args.conv_filter[0]])
         x = self.norm(x)
         x = self.decoder([x, [None] * 4])
-        output_img = self.conv(x)
-        return output_img
+        output_image = self.conv(x)
+        return output_image
 
 
 class Adjuster(tf.keras.Model):
@@ -106,7 +107,7 @@ class Adjuster(tf.keras.Model):
         self.dense = tf.layers.Dense(self.args.init_dim ** 2 * self.args.conv_filter[0])
         self.norm = InstanceNormalization()
         self.decoder = decoder
-        self.conv = tf.layers.Conv2DTranspose(self.args.img_channel, self.args.kernel_size, strides=(1, 1), padding="same", activation="tanh")
+        self.conv = tf.layers.Conv2DTranspose(self.args.image_channel, self.args.kernel_size, strides=(1, 1), padding="same", activation="tanh")
 
     @tf.contrib.eager.defun
     def call(self, inputs, training=None, mask=None):
@@ -158,13 +159,15 @@ class Trainer:
         for model in self.models:
             name = model.__class__.__name__
             self.part_weights[name] = [[model.weights[layer] for layer in group] for group in self.part_groups[name]]
+        self.test_image, self.test_cond = self.dataset.iterator.get_next()
+        self.test_noise = tf.random_normal([self.test_cond.shape[0], self.args.noise_dim])
 
     def _test(self):
-        real_img, real_cond = self.dataset.iterator.get_next()
+        real_image, real_cond = self.dataset.iterator.get_next()
         noise = tf.random_normal([real_cond.shape[0], self.args.noise_dim])
-        self.discriminator(real_img)
+        self.discriminator(real_image)
         self.generator([noise, real_cond])
-        self.adjuster([real_img, real_cond])
+        self.adjuster([real_image, real_cond])
 
     @staticmethod
     def discriminator_loss(real_true_c, real_predict_c, real_predict_pr, fake_predict_pr):
@@ -172,18 +175,18 @@ class Trainer:
                 + tf.reduce_mean(tf.square(0.98 - real_predict_pr))
                 + tf.reduce_mean(tf.square(0.02 - fake_predict_pr)))
 
-    def generator_loss(self, cond_ori, cond_disc, pr_disc, img_ori, img_gen):
+    def generator_loss(self, cond_ori, cond_disc, pr_disc, image_ori, image_gen):
         return (tf.reduce_mean(tf.square(0.98 - pr_disc))
                 + tf.reduce_mean(tf.square(cond_ori - cond_disc))
-                + tf.reduce_mean(self.args.l1_lambda * tf.abs(img_ori - img_gen)))
+                + tf.reduce_mean(self.args.l1_lambda * tf.abs(image_ori - image_gen)))
 
-    def adjuster_loss(self, cond_ori, cond_disc_real, pr_disc_real, cond_disc_fake, pr_disc_fake, img_ori, img_adj_real, img_adj_fake):
+    def adjuster_loss(self, cond_ori, cond_disc_real, pr_disc_real, cond_disc_fake, pr_disc_fake, image_ori, image_adj_real, image_adj_fake):
         fake = (tf.reduce_mean(tf.square(0.98 - pr_disc_fake))
                 + tf.reduce_mean(tf.square(cond_ori - cond_disc_fake))
-                + self.args.l1_lambda * tf.reduce_mean(tf.abs(img_ori - img_adj_fake)))
+                + self.args.l1_lambda * tf.reduce_mean(tf.abs(image_ori - image_adj_fake)))
         real = (tf.reduce_mean(tf.square(0.98 - pr_disc_real))
                 + tf.reduce_mean(tf.square(cond_ori - cond_disc_real))
-                + self.args.l1_lambda * tf.reduce_mean(tf.abs(img_ori - img_adj_real)))
+                + self.args.l1_lambda * tf.reduce_mean(tf.abs(image_ori - image_adj_real)))
         return real + fake
 
     @staticmethod
@@ -192,8 +195,8 @@ class Trainer:
             with tf.GradientTape() as gp_tape:
                 alpha = tf.random_uniform(shape=[real.shape[0], 1, 1, 1])
                 inter = real + alpha * (fake - real)
-                pred = f(inter)
-            gradients = gp_tape.gradient(pred, f.weights)[0]
+                predict = f(inter)
+            gradients = gp_tape.gradient(predict, f.weights)[0]
             slopes = tf.sqrt(tf.reduce_sum(tf.square(gradients), reduction_indices=range(1, inter.shape.ndims)))
             gp = tf.reduce_mean((slopes - 1.) ** 2)
             return gp
@@ -205,23 +208,22 @@ class Trainer:
             name = model.__class__.__name__
             weights = self.part_weights[name]
             return weights[(batch_no // (self.args.partition_interval + 1)) % weights.__len__()]
-
         return model.weights
 
-    def _train_step(self, batch_no, include_img):
-        real_img, real_cond = self.dataset.iterator.get_next()
+    def _train_step(self, batch_no):
+        real_image, real_cond = self.dataset.iterator.get_next()
         noise = tf.random_normal([real_cond.shape[0], self.args.noise_dim])
         with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
-            fake_img = self.generator([noise, real_cond])
-            real_pr, real_c = self.discriminator(real_img)
-            fake_pr, fake_c = self.discriminator(fake_img)
+            fake_image = self.generator([noise, real_cond])
+            real_pr, real_c = self.discriminator(real_image)
+            fake_pr, fake_c = self.discriminator(fake_image)
 
             disc_loss = self.discriminator_loss(real_cond, real_c, real_pr, fake_pr)
-            gen_loss = self.generator_loss(real_cond, fake_c, fake_pr, real_img, fake_img)
+            gen_loss = self.generator_loss(real_cond, fake_c, fake_pr, real_image, fake_image)
             if self.args.use_gp:
                 # todo: Is gp must use on cross-entropy
                 # todo: explore how to gp on eager mode
-                disc_gp = self.gradient_penalty(real_img, fake_img, self.discriminator)
+                disc_gp = self.gradient_penalty(real_image, fake_image, self.discriminator)
                 disc_loss = -disc_loss + disc_gp * self.args.gp_weight
 
         gradients_of_gen = gen_tape.gradient(gen_loss, self._get_train_weight(self.generator, batch_no))
@@ -234,27 +236,22 @@ class Trainer:
         self.discriminator_optimizer.apply_gradients(zip(gradients_of_disc, self._get_train_weight(self.discriminator, batch_no)))
         if self.args.train_adj:
             with tf.GradientTape() as adj_tape:
-                adj_real_img = self.adjuster([real_img, real_cond])
-                adj_fake_img = self.adjuster([fake_img, real_cond])
-                adj_fake_pr, adj_fake_c = self.discriminator(adj_fake_img)
-                adj_real_pr, adj_real_c = self.discriminator(adj_real_img)
+                adj_real_image = self.adjuster([real_image, real_cond])
+                adj_fake_image = self.adjuster([fake_image, real_cond])
+                adj_fake_pr, adj_fake_c = self.discriminator(adj_fake_image)
+                adj_real_pr, adj_real_c = self.discriminator(adj_real_image)
 
-                adj_loss = self.adjuster_loss(real_cond, adj_real_c, adj_real_pr, adj_fake_c, adj_fake_pr, real_img, adj_real_img, adj_fake_img)
+                adj_loss = self.adjuster_loss(real_cond, adj_real_c, adj_real_pr, adj_fake_c, adj_fake_pr, real_image, adj_real_image, adj_fake_image)
             gradients_of_adj = adj_tape.gradient(adj_loss, self._get_train_weight(self.adjuster, batch_no))
             self.adjuster_optimizer.apply_gradients(zip(gradients_of_adj, self._get_train_weight(self.adjuster, batch_no)))
 
-            if include_img:
-                return fake_img, adj_real_img, adj_fake_img, gen_loss, disc_loss, adj_loss
-            else:
-                return None, None, None, gen_loss, disc_loss, adj_loss
+            return fake_image, adj_real_image, adj_fake_image, gen_loss, disc_loss, adj_loss
         else:
-            if include_img:
-                return fake_img, None, None, gen_loss, disc_loss, None
-            else:
-                return None, None, None, gen_loss, disc_loss, None
+            return fake_image, None, None, gen_loss, disc_loss, None
 
-    def interrupted(self, signum, fname):
+    def interrupted(self, signum, f_name):
         self.checkpoint.save(path.join(self.args.result_dir, "checkpoint", "interrupt"))
+        print(signum, f_name)
         import sys
         sys.exit(1)
 
@@ -265,29 +262,46 @@ class Trainer:
         import signal
         signal.signal(signal.SIGINT, self.interrupted)
         for e in range(1, self.args.epoch):
-            prog = tf.keras.utils.Progbar(self.dataset.batches * self.args.batch_size, stateful_metrics=loss_label)
+            progress_bar = tf.keras.utils.Progbar(self.dataset.batches * self.args.batch_size)
             self.dataset.get_new_iterator()
             for b in range(1, self.dataset.batches + 1):
-                export_img = b % self.args.freq_batch is 0
                 try:
-                    result = self._train_step(b, export_img)
+                    result = self._train_step(b)
                 except tf.errors.OutOfRangeError:
                     break
                 losses = result[3:3 + len(loss_label)]
-                prog.add(self.args.batch_size, zip(loss_label, losses))
-
-                if export_img:
-                    gen_img = result[0]
-                    save_image(gen_img, path.join(self.args.result_dir, "image", "gen", "%d-%d.jpg" % (e, b)))
+                # Terminal平均输出
+                progress_bar.add(self.args.batch_size, zip(loss_label, losses))
+                # 输出训练生成图像
+                if b % self.args.freq_gen is 0:
+                    gen_image = result[0]
+                    save_image(gen_image, path.join(self.args.result_dir, "train", "gen", "%d-%d.jpg" % (e, b)))
 
                     if self.args.train_adj:
-                        adj_img = tf.concat(result[1:3], 0)
-                        save_image(adj_img, path.join(self.args.result_dir, "image", "adj", "%d-%d.jpg" % (e, b)))
+                        adj_image = tf.concat(result[1:3], 0)
+                        save_image(adj_image, path.join(self.args.result_dir, "train", "adj", "%d-%d.jpg" % (e, b)))
+                if b % self.args.freq_test is 0:
+                    gen_image = self.generator([self.test_noise, self.test_cond])
+                    save_image(gen_image, path.join(self.args.result_dir, "test", "gen", "%d-%d.jpg" % (e, b)))
+                    with open(path.join(self.args.result_dir, "test", "disc", "%d-%d.json" % (e, b)), "w") as f:
+                        save = dict()
+                        save["real_cond"] = self.test_cond
+                        save["real_pr"], save["real_c"] = self.discriminator(self.test_image)
+                        save["fake_pr"], save["fake_c"] = self.discriminator(gen_image)
+                        for x in save:
+                            save[x] = save[x].numpy().round(1).tolist()
+                        json.dump(save, f)
+
+                    if self.args.train_adj:
+                        adj_real_image = self.adjuster([self.test_image, self.test_cond])
+                        adj_fake_image = self.adjuster([gen_image, self.test_cond])
+                        adj_image = tf.concat([adj_real_image, adj_fake_image], 0)
+                        save_image(adj_image, path.join(self.args.result_dir, "test", "adj", "%d-%d.jpg" % (e, b)))
 
             self.checkpoint.save(path.join(self.args.result_dir, "checkpoint", str(e)))
 
     def make_result_dir(self):
-        dirs = [".", "image/gen", "image/adj", "image/ev_adj", "image/ev_gen", "checkpoint", "event"]
+        dirs = [".", "train/gen", "train/adj", "test/adj", "test/gen", "test/disc", "checkpoint", "event"]
         for item in dirs:
             if not path.exists(path.join(self.args.result_dir, item)):
                 makedirs(path.join(self.args.result_dir, item))
@@ -298,7 +312,6 @@ class Trainer:
             def print_fn(content):
                 print(content, file=f)
 
-            self._train_step(False)
             model = [self.discriminator.encoder, self.generator.decoder, self.discriminator, self.generator]
             if self.args.train_adj:
                 model.append(self.adjuster)
