@@ -201,17 +201,17 @@ class Trainer:
         raise NotImplementedError("GP didn't implemented on eager mode")
 
     def _get_train_weight(self, model, batch_no):
-        if self.args.use_partition and batch_no % (self.args.partition + 1) is 0:
+        if self.args.use_partition and batch_no % (self.args.partition_interval + 1) is 0:
             name = model.__class__.__name__
             weights = self.part_weights[name]
-            return weights[(batch_no // (self.args.partition + 1)) % weights.__len__()]
+            return weights[(batch_no // (self.args.partition_interval + 1)) % weights.__len__()]
 
         return model.weights
 
     def _train_step(self, batch_no, include_img):
         real_img, real_cond = self.dataset.iterator.get_next()
         noise = tf.random_normal([real_cond.shape[0], self.args.noise_dim])
-        with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:  # , tf.GradientTape() as adj_tape:
+        with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
             fake_img = self.generator([noise, real_cond])
             real_pr, real_c = self.discriminator(real_img)
             fake_pr, fake_c = self.discriminator(fake_img)
@@ -253,7 +253,7 @@ class Trainer:
             else:
                 return None, None, None, gen_loss, disc_loss, None
 
-    def interrupted(self):
+    def interrupted(self, signum, fname):
         self.checkpoint.save(path.join(self.args.result_dir, "checkpoint", "interrupt"))
         import sys
         sys.exit(1)
