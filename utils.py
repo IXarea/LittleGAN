@@ -48,7 +48,7 @@ def save_image(image, path=None, shape=(None, None)):
             i = index // width
             j = index % width
             for l in range(img_channel):
-                combined_image[j * img_width:(j + 1) * img_width, i * img_height:(i + 1) * img_height, l] = img[:, :, l]
+                combined_image[i * img_height:(i + 1) * img_height, j * img_width:(j + 1) * img_width, l] = img[:, :, l]
         image = combined_image
 
     if image.shape[2] == 1:

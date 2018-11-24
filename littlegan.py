@@ -139,9 +139,13 @@ class Trainer:
         self.discriminator = discriminator
         self.generator = generator
         self.models = [self.discriminator, self.generator, self.adjuster]
-        self._test()
-        self.generator_optimizer = tf.train.AdamOptimizer(args.lr * 2)
-        self.discriminator_optimizer = tf.train.AdamOptimizer(args.lr * 3)
+
+        self.writer = tf.contrib.summary.create_file_writer(path.join(self.args.result_dir, "log"))
+        self.writer.set_as_default()
+
+        self._init_graph()
+        self.generator_optimizer = tf.train.AdamOptimizer(args.lr)
+        self.discriminator_optimizer = tf.train.AdamOptimizer(args.lr)
         self.adjuster_optimizer = tf.train.AdamOptimizer(args.lr)
         self.checkpoint = tf.train.Checkpoint(discriminator=self.discriminator, generator=self.generator, adjuster=self.adjuster,
                                               discriminator_optimizer=self.discriminator_optimizer, generator_optimizer=self.generator_optimizer,
@@ -149,20 +153,22 @@ class Trainer:
         if path.isdir(path.join(self.args.result_dir, "checkpoint")) and self.args.restore:
             self.checkpoint.restore(tf.train.latest_checkpoint(path.join(self.args.result_dir, "checkpoint")))
         self.make_result_dir()
+
         self.part_groups = {
             "Generator": [range(0, 4), range(4, 8), range(8, 22)],
             "Discriminator": [range(0, 12), range(12, 16), range(16, 20)],
             "Adjuster": [range(16, 20), range(36, 38)]
         }
-
         self.part_weights = {}
         for model in self.models:
             name = model.__class__.__name__
             self.part_weights[name] = [[model.weights[layer] for layer in group] for group in self.part_groups[name]]
+
         self.test_image, self.test_cond = self.dataset.iterator.get_next()
         self.test_noise = tf.random_normal([self.test_cond.shape[0], self.args.noise_dim])
 
-    def _test(self):
+    def _init_graph(self):
+
         real_image, real_cond = self.dataset.iterator.get_next()
         noise = tf.random_normal([real_cond.shape[0], self.args.noise_dim])
         self.discriminator(real_image)
@@ -261,15 +267,25 @@ class Trainer:
             loss_label.append("LossA")
         import signal
         signal.signal(signal.SIGINT, self.interrupted)
+
+        global_step = tf.train.get_or_create_global_step()
+
         for e in range(1, self.args.epoch):
             progress_bar = tf.keras.utils.Progbar(self.dataset.batches * self.args.batch_size)
             self.dataset.get_new_iterator()
             for b in range(1, self.dataset.batches + 1):
+
                 try:
                     result = self._train_step(b)
                 except tf.errors.OutOfRangeError:
                     break
                 losses = result[3:3 + len(loss_label)]
+                global_step.assign_add(1)
+                with tf.contrib.summary.always_record_summaries():
+                    tf.contrib.summary.scalar('loss_gen', losses[0])
+                    tf.contrib.summary.scalar('loss_disc', losses[1])
+                    if self.args.train_adj:
+                        tf.contrib.summary.scalar('loss_adj', losses[2])
                 # Terminal平均输出
                 progress_bar.add(self.args.batch_size, zip(loss_label, losses))
                 # 输出训练生成图像
@@ -301,7 +317,7 @@ class Trainer:
             self.checkpoint.save(path.join(self.args.result_dir, "checkpoint", str(e)))
 
     def make_result_dir(self):
-        dirs = [".", "train/gen", "train/adj", "test/adj", "test/gen", "test/disc", "checkpoint", "event"]
+        dirs = [".", "train/gen", "train/adj", "test/adj", "test/gen", "test/disc", "checkpoint", "log"]
         for item in dirs:
             if not path.exists(path.join(self.args.result_dir, item)):
                 makedirs(path.join(self.args.result_dir, item))
