@@ -1,33 +1,32 @@
 import math
 import os
 
-import keras.backend as k
 import numpy as np
 import tensorflow as tf
 from git import Repo
-from keras.layers import Input, Dense, Reshape, Conv2D, Flatten, LeakyReLU, Dropout, Conv2DTranspose, BatchNormalization
-from keras.layers.merge import Concatenate
-from keras.models import Model
-from keras.utils import Progbar, multi_gpu_model, plot_model
+from tensorflow.python.keras import backend as k
+from tensorflow.python.keras.layers import Input, Dense, Reshape, Conv2D, Flatten, LeakyReLU, Dropout, Conv2DTranspose, BatchNormalization, Concatenate
+from tensorflow.python.keras.models import Model
+from tensorflow.python.keras.utils import Progbar, multi_gpu_model, plot_model
 from keras_contrib.layers import InstanceNormalization
 
 from utils import add_sequential_layer, save_img, combine_images, save_weights
 
 
 class OurGAN:
-    def __init__(self, path, arg):
+    def __init__(self, path, input_args):
         """
         模型初始化
         """
         print("Build Model Start")
-
-        self.noise_dim = arg.noise
-        self.cond_dim = len(arg.attr)
-        self.img_dim = arg.img_size
-        self.channels = arg.img_channel
-        self.kernel_size = arg.kernel_size
-        self.norm = {"instance": InstanceNormalization, "batch": BatchNormalization}[arg.norm]
-        self.conv_filter = [arg.min_filter * 2 ** (4 - x) for x in range(5)]
+        self.input_args = input_args
+        self.noise_dim = input_args.noise
+        self.cond_dim = len(input_args.attr)
+        self.img_dim = input_args.img_size
+        self.channels = input_args.img_channel
+        self.kernel_size = input_args.kernel_size
+        self.norm = {"instance": InstanceNormalization, "batch": BatchNormalization}[input_args.norm]
+        self.conv_filter = [input_args.min_filter * 2 ** (4 - x) for x in range(5)]
         self.sess = k.get_session()
 
         self.result_path = os.path.abspath(path)
@@ -67,42 +66,46 @@ class OurGAN:
         self.layers = {
             "d_128_64": [
                 Conv2D(self.conv_filter[3], kernel_size=self.kernel_size, strides=2, padding='same', name="d_128_64_conv"),
-                self.norm(name="d_128_64_norm"), LeakyReLU(alpha=0.2, name="d_128_64_relu"), Dropout(0.25, name="d_128_64_dropout")],
+                self.norm(name="d_128_64_norm"), LeakyReLU(alpha=self.input_args.leaky_alpha, name="d_128_64_relu"),
+                Dropout(self.input_args.dropout_rate, name="d_128_64_dropout")],
             "d_64_32": [
                 Conv2D(self.conv_filter[2], kernel_size=self.kernel_size, strides=2, padding='same', name="d_64_32_conv"),
-                self.norm(name="d_64_32_norm"), LeakyReLU(alpha=0.2, name="d_64_32_relu"), Dropout(0.25, name="d_64_32_dropout")],
+                self.norm(name="d_64_32_norm"), LeakyReLU(alpha=self.input_args.leaky_alpha, name="d_64_32_relu"),
+                Dropout(self.input_args.dropout_rate, name="d_64_32_dropout")],
             "d_32_16": [
                 Conv2D(self.conv_filter[1], kernel_size=self.kernel_size, strides=2, padding='same', name="d_32_16_conv"),
-                self.norm(name="d_32_16_norm"), LeakyReLU(alpha=0.2, name="d_32_16_relu"), Dropout(0.25, name="d_32_16_dropout")],
+                self.norm(name="d_32_16_norm"), LeakyReLU(alpha=self.input_args.leaky_alpha, name="d_32_16_relu"),
+                Dropout(self.input_args.dropout_rate, name="d_32_16_dropout")],
             "d_16_8": [
                 Conv2D(self.conv_filter[0], kernel_size=self.kernel_size, strides=2, padding='same', name="d_16_8_conv"),
-                self.norm(name="d_16_8_norm"), LeakyReLU(alpha=0.2, name="d_16_8_relu"), Dropout(0.25, name="d_16_8_dropout")],
+                self.norm(name="d_16_8_norm"), LeakyReLU(alpha=self.input_args.leaky_alpha, name="d_16_8_relu"),
+                Dropout(self.input_args.dropout_rate, name="d_16_8_dropout")],
 
             "g_8_16": [
                 Conv2DTranspose(self.conv_filter[1], kernel_size=self.kernel_size, strides=2, padding='same', name="g_8_16_conv"),
-                self.norm(name="g_8_16_norm"), LeakyReLU(alpha=0.2, name="g_8_16_relu")],
+                self.norm(name="g_8_16_norm"), LeakyReLU(alpha=self.input_args.leaky_alpha, name="g_8_16_relu")],
             "g_16_32": [
                 Conv2DTranspose(self.conv_filter[2], kernel_size=self.kernel_size, strides=2, padding='same', name="g_16_32_conv"),
-                self.norm(name="g_16_32_norm"), LeakyReLU(alpha=0.2, name="g_16_32_relu")],
+                self.norm(name="g_16_32_norm"), LeakyReLU(alpha=self.input_args.leaky_alpha, name="g_16_32_relu")],
             "g_32_64": [
                 Conv2DTranspose(self.conv_filter[3], kernel_size=self.kernel_size, strides=2, padding='same', name="g_32_64_conv"),
-                self.norm(name="g_32_64_norm"), LeakyReLU(alpha=0.2, name="g_32_64_relu")],
+                self.norm(name="g_32_64_norm"), LeakyReLU(alpha=self.input_args.leaky_alpha, name="g_32_64_relu")],
             "g_64_128": [
                 Conv2DTranspose(self.conv_filter[4], kernel_size=self.kernel_size, strides=2, padding='same', name="g_64_128_conv"),
-                self.norm(name="g_64_128_norm"), LeakyReLU(alpha=0.2, name="g_64_128_relu")],
+                self.norm(name="g_64_128_norm"), LeakyReLU(alpha=self.input_args.leaky_alpha, name="g_64_128_relu")],
 
             "ug_8_16": [
                 Conv2DTranspose(self.conv_filter[1], kernel_size=self.kernel_size, strides=2, padding='same', name="ug_8_16_conv"),
-                self.norm(name="ug_8_16_norm"), LeakyReLU(alpha=0.2, name="ug_8_16_relu")],
+                self.norm(name="ug_8_16_norm"), LeakyReLU(alpha=self.input_args.leaky_alpha, name="ug_8_16_relu")],
             "ug_16_32": [
                 Conv2DTranspose(self.conv_filter[2], kernel_size=self.kernel_size, strides=2, padding='same', name="ug_16_32_conv"),
-                self.norm(name="ug_16_32_norm"), LeakyReLU(alpha=0.2, name="ug_16_32_relu")],
+                self.norm(name="ug_16_32_norm"), LeakyReLU(alpha=self.input_args.leaky_alpha, name="ug_16_32_relu")],
             "ug_32_64": [
                 Conv2DTranspose(self.conv_filter[3], kernel_size=self.kernel_size, strides=2, padding='same', name="ug_32_64_conv"),
-                self.norm(name="ug_32_64_norm"), LeakyReLU(alpha=0.2, name="ug_32_64_relu")],
+                self.norm(name="ug_32_64_norm"), LeakyReLU(alpha=self.input_args.leaky_alpha, name="ug_32_64_relu")],
             "ug_64_128": [
                 Conv2DTranspose(self.conv_filter[4], kernel_size=self.kernel_size, strides=2, padding='same', name="ug_64_128_conv"),
-                self.norm(name="ug_64_128_norm"), LeakyReLU(alpha=0.2, name="ug_64_128_relu")],
+                self.norm(name="ug_64_128_norm"), LeakyReLU(alpha=self.input_args.leaky_alpha, name="ug_64_128_relu")],
 
             "c_8": [Dense(8 ** 2 * 64, name="c_8_dense"), Reshape([8, 8, 64], name="c_8_reshape")],
             "c_16": [Dense(16 ** 2 * 32, name="c_16_dense"), Reshape([16, 16, 32], name="c_16_reshape")],
@@ -198,10 +201,10 @@ class OurGAN:
         # 构建优化操作 最小化损失函数(反向传播)
         with tf.control_dependencies(tf.get_collection(tf.GraphKeys.UPDATE_OPS)):
             # 全局优化器
-            d_updater = tf.train.AdamOptimizer(15e-5, 0.5, 0.9)
+            d_updater = tf.train.AdamOptimizer(10e-5, 0.5, 0.9)
             self.d_full_updater = d_updater.minimize(self.d_loss, var_list=self.discriminator.trainable_weights)
             print("Initialize Training: Build Full Optimizer OK: Discriminator")
-            g_updater = tf.train.AdamOptimizer(10e-5, 0.5, 0.9)
+            g_updater = tf.train.AdamOptimizer(15e-5, 0.5, 0.9)
             self.g_full_updater = g_updater.minimize(self.g_loss, var_list=self.generator.trainable_weights)
             print("Initialize Training: Build Full Optimizer OK: Generator")
             u_updater = tf.train.AdamOptimizer(5e-5, 0.5, 0.9)
@@ -249,7 +252,7 @@ class OurGAN:
     def _setup_model_g(self):
         x = Concatenate()([self.noise_input, self.cond_input])
         x = Dense(self.init_dim ** 2 * self.conv_filter[0])(x)  # 不可使用两次全连接
-        x = LeakyReLU(0.2)(x)
+        x = LeakyReLU(self.input_args.leaky_alpha)(x)
         x = Reshape([self.init_dim, self.init_dim, self.conv_filter[0]])(x)
         x = self.norm()(x)
 
@@ -415,7 +418,7 @@ class OurGAN:
         if noise is None:
             noise = np.random.normal(size=[batch_size, self.noise_dim])
         np.set_printoptions(threshold=batch_size * self.noise_dim)
-        img = combine_images(self.generator.predict([noise, condition]))
+        img = self.generator.predict([noise, condition])
         with open(os.path.join(self.result_path, "generate.log"), "w")as f:
             f.write("Generate Image Condition\r\n\r")
             if labels is not None:
@@ -424,5 +427,5 @@ class OurGAN:
             for item in condition:
                 lid += 1
                 print(lid, item, file=f)
-        save_img(img, os.path.join(self.result_path, "generate.png"))
+        save_img(combine_images(img), os.path.join(self.result_path, "generate.png"))
         return img

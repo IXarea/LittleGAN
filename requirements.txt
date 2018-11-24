@@ -1,6 +1,4 @@
-keras
-tensorflow-gpu==1.11.*
+tensorflow-gpu==1.12.*
 Pillow
-git+https://github.com/keras-team/keras-contrib.git
 GitPython
-numpy
+pydot
