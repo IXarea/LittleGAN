@@ -6,9 +6,7 @@ class CelebA:
     def __init__(self, args):
         self.args = args
         self._image_list = []
-        for dir_name in args.image_path:
-            print(dir_name + "/*." + args.image_ext)
-            self._image_list += glob(dir_name + "/*." + args.image_ext)
+        self._image_list += glob(args.image_path + "/*." + args.image_ext)
         self._attributes_list = self._get_attr_list(args.attr_path, args.attr)
         self.batches = len(self._image_list) // args.batch_size
         self.all_label = ["有短髭", "柳叶眉", "有魅力", "有眼袋", "秃头", "有刘海", "大嘴唇", "大鼻子", "黑发", "金发", "睡眼惺松", "棕发", "浓眉",

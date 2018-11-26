@@ -139,10 +139,6 @@ class Trainer:
         self.discriminator = discriminator
         self.generator = generator
         self.models = [self.discriminator, self.generator, self.adjuster]
-
-        self.writer = tf.contrib.summary.create_file_writer(path.join(self.args.result_dir, "log"))
-        self.writer.set_as_default()
-
         self._init_graph()
         self.generator_optimizer = tf.train.AdamOptimizer(args.lr)
         self.discriminator_optimizer = tf.train.AdamOptimizer(args.lr)
@@ -153,6 +149,8 @@ class Trainer:
         if path.isdir(path.join(self.args.result_dir, "checkpoint")) and self.args.restore:
             self.checkpoint.restore(tf.train.latest_checkpoint(path.join(self.args.result_dir, "checkpoint")))
         self.make_result_dir()
+        self.writer = tf.contrib.summary.create_file_writer(path.join(self.args.result_dir, "log"))
+        self.writer.set_as_default()
 
         self.part_groups = {
             "Generator": [range(0, 4), range(4, 8), range(8, 22)],
@@ -314,7 +312,7 @@ class Trainer:
                         save["real_pr"], save["real_c"] = self.discriminator(self.test_image)
                         save["fake_pr"], save["fake_c"] = self.discriminator(gen_image)
                         for x in save:
-                            save[x] = save[x].numpy().round(1).tolist()
+                            save[x] = (tf.round(save[x] * 10)).numpy().astype(int).tolist()
                         json.dump(save, f)
 
                     if self.args.train_adj:

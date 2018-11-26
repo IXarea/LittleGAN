@@ -1,14 +1,17 @@
-from os import path, system
+from config import Arg
 
+args = Arg()
 import tensorflow as tf
 
 tf.enable_eager_execution()
+
+from os import path, system
+
 from dataset import CelebA
 from littlegan import Trainer, Adjuster, Discriminator, Decoder, Encoder, Generator
-from ixtest import FakeArg
+
 from git import Repo
 
-args = FakeArg()
 dec = Decoder(args)
 enc = Encoder(args)
 gen = Generator(args, dec)
@@ -29,7 +32,7 @@ if args.mode == "train":
     print("\r\nImage Flows From: ", args.image_path, "   Image Count: ", args.batch_size * data.batches)
     print("\r\nUsing Attribute: ", data.label)
     repo = Repo(".")
-    if repo.is_dirty() and not args.test:  # 程序被修改且不是测试模式
+    if repo.is_dirty() and not args.debug:  # 程序被修改且不是测试模式
         raise EnvironmentError("Git repo is Dirty! Please train after committed.")
     model.train()
 elif args.mode == "visual":  # loss etc的可视化
