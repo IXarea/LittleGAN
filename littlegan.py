@@ -210,11 +210,14 @@ class Trainer:
         raise NotImplementedError("GP didn't implemented on eager mode")
 
     def _get_train_weight(self, model, batch_no):
+        name = model.__class__.__name__
         if self.args.use_partition and batch_no % (self.args.partition_interval + 1) is 0:
-            name = model.__class__.__name__
             weights = self.part_weights[name]
             return weights[(batch_no // (self.args.partition_interval + 1)) % weights.__len__()]
-        return model.weights
+        if name in ["Generator", "Discriminator"]:
+            return model.weights
+        else:
+            return None
 
     def _train_step(self, batch_no):
         real_image, real_cond = self.dataset.iterator.get_next()
@@ -241,30 +244,31 @@ class Trainer:
         self.generator_optimizer.apply_gradients(zip(gradients_of_gen, self._get_train_weight(self.generator, batch_no)))
         self.discriminator_optimizer.apply_gradients(zip(gradients_of_disc, self._get_train_weight(self.discriminator, batch_no)))
         if self.args.train_adj:
-            with tf.GradientTape() as adj_tape:
-                adj_real_image = self.adjuster([real_image, real_cond])
-                adj_fake_image = self.adjuster([fake_image, real_cond])
-                adj_fake_pr, adj_fake_c = self.discriminator(adj_fake_image)
-                adj_real_pr, adj_real_c = self.discriminator(adj_real_image)
+            adj_weight = self._get_train_weight(self.adjuster, batch_no)
+            if adj_weight is not None:
+                with tf.GradientTape() as adj_tape:
+                    adj_real_image = self.adjuster([real_image, real_cond])
+                    adj_fake_image = self.adjuster([fake_image, real_cond])
+                    adj_fake_pr, adj_fake_c = self.discriminator(adj_fake_image)
+                    adj_real_pr, adj_real_c = self.discriminator(adj_real_image)
 
-                adj_loss = self.adjuster_loss(real_cond, adj_real_c, adj_real_pr, adj_fake_c, adj_fake_pr, real_image, adj_real_image, adj_fake_image)
-            gradients_of_adj = adj_tape.gradient(adj_loss, self._get_train_weight(self.adjuster, batch_no))
-            self.adjuster_optimizer.apply_gradients(zip(gradients_of_adj, self._get_train_weight(self.adjuster, batch_no)))
+                    adj_loss = self.adjuster_loss(real_cond, adj_real_c, adj_real_pr, adj_fake_c, adj_fake_pr, real_image, adj_real_image, adj_fake_image)
+                gradients_of_adj = adj_tape.gradient(adj_loss, adj_weight)
+                self.adjuster_optimizer.apply_gradients(zip(gradients_of_adj, adj_weight))
 
-            return fake_image, adj_real_image, adj_fake_image, gen_loss, disc_loss, adj_loss
-        else:
-            return fake_image, None, None, gen_loss, disc_loss, None
+                return fake_image, adj_real_image, adj_fake_image, gen_loss, disc_loss, adj_loss
+
+        return fake_image, None, None, gen_loss, disc_loss, None
 
     def interrupted(self, signum, f_name):
         self.checkpoint.save(path.join(self.args.result_dir, "checkpoint", "interrupt"))
+        print("\n Checkpoint has been saved")
         print(signum, f_name)
         import sys
         sys.exit(1)
 
     def train(self):
-        loss_label = ["LossG", "LossD"]
-        if self.args.train_adj:
-            loss_label.append("LossA")
+        loss_label = ["LossG", "LossD", "LossA"]
         import signal
         signal.signal(signal.SIGINT, self.interrupted)
 
@@ -279,21 +283,26 @@ class Trainer:
                     result = self._train_step(b)
                 except tf.errors.OutOfRangeError:
                     break
-                losses = result[3:3 + len(loss_label)]
+                losses = result[3:6]
                 global_step.assign_add(1)
                 with tf.contrib.summary.always_record_summaries():
-                    tf.contrib.summary.scalar('loss_gen', losses[0])
-                    tf.contrib.summary.scalar('loss_disc', losses[1])
-                    if self.args.train_adj:
-                        tf.contrib.summary.scalar('loss_adj', losses[2])
+                    tf.contrib.summary.scalar('loss/gen', losses[0])
+                    tf.contrib.summary.scalar('loss/disc', losses[1])
+                    if losses[2] is not None:
+                        tf.contrib.summary.scalar('loss/adj', losses[2])
                 # Terminal平均输出
-                progress_bar.add(self.args.batch_size, zip(loss_label, losses))
+                prog_add = []
+                for label, loss in zip(loss_label, losses):
+                    if loss is not None:
+                        prog_add.append((label, loss))
+                progress_bar.add(self.args.batch_size, prog_add)
+
                 # 输出训练生成图像
                 if b % self.args.freq_gen is 0:
                     gen_image = result[0]
                     save_image(gen_image, path.join(self.args.result_dir, "train", "gen", "%d-%d.jpg" % (e, b)))
 
-                    if self.args.train_adj:
+                    if result[1] is not None and result[2] is not None:
                         adj_image = tf.concat(result[1:3], 0)
                         save_image(adj_image, path.join(self.args.result_dir, "train", "adj", "%d-%d.jpg" % (e, b)))
                 if b % self.args.freq_test is 0:

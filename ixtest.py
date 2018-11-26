@@ -6,11 +6,11 @@ import time
 class FakeArg:
     def __init__(self):
         self.image_channel = 3
-        self.batch_size = 2
+        self.batch_size = 24
         self.attr_path = "E:/ds/modify/list_attr_celeba.txt"
         self.image_path = ["E:/ds/data_crop_128_jpg"]
-        self.image_path = ["X:\\dataset\\test"]
-        self.attr_path = "X:\\dataset\\test.txt"
+        #        self.image_path = ["X:\\dataset\\test"]
+        #        self.attr_path = "X:\\dataset\\test.txt"
         self.image_ext = "jpg"
         self.attr = "8,15,20,22,26,36,39"
         _attr = self.attr.split(",")
@@ -26,16 +26,16 @@ class FakeArg:
         self.noise_dim = 128
         self.init_dim = 8
         self.l1_lambda = 0.02
-        self.lr = 1e-4
+        self.lr = 5e-5
 
         self.gp_weight = 5.0
         self.use_gp = False
-        self.use_clip = True
+        self.use_clip = False
         self.clip_range = 0.5
 
         self.epoch = 100
-        self.freq_gen = 1
-        self.freq_test = 5
+        self.freq_gen = 100
+        self.freq_test = 2000
         self.all_result_dir = "../LittleGAN-result"
         self.exp_name = str(int(time.time())) + "test"
         self.all_result_dir = path.abspath(self.all_result_dir)
@@ -45,6 +45,10 @@ class FakeArg:
         self.prefetch = self.batch_size * 5
         self.use_partition = True
         self.partition_interval = 2
+
+        self.test = True
+        self.mode = "train"
+        self.gpu = [0]
         # todo: recover the status from interrupt
 
 
