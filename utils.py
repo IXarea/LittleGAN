@@ -45,10 +45,10 @@ def save_image(image, path=None, shape=(None, None)):
         combined_image = np.zeros((width * img_width, height * img_height, img_channel), np.uint8)
 
         for index, img in enumerate(image):
-            i = index // width
-            j = index % width
-            for l in range(img_channel):
-                combined_image[i * img_height:(i + 1) * img_height, j * img_width:(j + 1) * img_width, l] = img[:, :, l]
+            y = index // width
+            x = index % width
+            for layer in range(img_channel):
+                combined_image[x * img_width:(x + 1) * img_width, y * img_height:(y + 1) * img_height, layer] = img[:, :, layer]
         image = combined_image
 
     if image.shape[2] == 1:
