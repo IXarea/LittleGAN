@@ -337,7 +337,7 @@ class Trainer:
         shutil.copyfile(self.args.env_file, path.join(self.args.result_dir, "config.json"))
         if not self.args.debug:
             repo = Repo(".")
-            with open(path.join(self.args.result_dir, "config.json"), "wb") as f:
+            with open(path.join(self.args.result_dir, "code.tar"), "wb") as f:
                 repo.archive(f)
 
     def plot(self):
