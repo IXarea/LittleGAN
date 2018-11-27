@@ -29,11 +29,11 @@
   "use_clip": false,
   "clip_range": 0.5,
   "use_partition": true,
-  "partition_interval": 2,
+  "partition_interval": 4,
   "freq_gen": 100,
   "freq_test": 2000,
   "all_result_dir": "../LittleGAN-result",
   "restore": true,
   "train_adj": true,
-  "prefetch": 160
+  "prefetch": 320
 }
