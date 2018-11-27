@@ -89,7 +89,7 @@ class Generator(tf.keras.Model):
     def call(self, inputs, training=None, mask=None):
         x = tf.concat(inputs, -1)
         x = self.dense(x)
-        x = tf.nn.relu(x, self.args.leaky_alpha)
+        x = tf.nn.relu(x)
         x = tf.reshape(x, [-1, self.args.init_dim, self.args.init_dim, self.args.conv_filter[0]])
         x = self.norm(x)
         x = self.decoder([x, [None] * 4])
