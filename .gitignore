@@ -6,3 +6,5 @@ __pycache__
 !.gitkeep
 Thumbs.db
 .vscode
+*.config.json
+!default.config.json
