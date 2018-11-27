@@ -14,8 +14,9 @@ class Arg:
         parser.add_argument("-g", "--gpu", type=str, required=False, help="gpu ids, eg: 0,1,2,3", default="-1")
         parser.add_argument("--debug", help="use debug mode, ignore git repo is dirty", action="store_true")
         args = parser.parse_args()
-
-        config = json.load(open(args.env + ".config.json"))
+        self.env_file = args.env + ".config.json"
+        with open(self.env_file) as f:
+            config = json.load(f)
         for item in config:
             self.__setattr__(item, config[item])
         for item in args.__dict__:

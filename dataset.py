@@ -29,7 +29,8 @@ class CelebA:
 
     @staticmethod
     def _get_attr_list(attr_file, attr_filter):
-        attributes_list_raw = open(attr_file).read().splitlines()
+        with open(attr_file) as f:
+            attributes_list_raw = f.read().splitlines()
         attributes_list = []
         for item in attributes_list_raw:
             attr_raw = item.split()[1:]

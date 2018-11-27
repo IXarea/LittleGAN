@@ -3,12 +3,14 @@ from instance import InstanceNormalization
 from os import path, makedirs
 from utils import save_image
 import json
+import shutil
+from git import Repo
 
 
 class Encoder(tf.keras.Model):
     def __init__(self, args):
         """
-        :param FakeArg args:
+        :param Arg args:
         """
         super(Encoder, self).__init__()
         self.args = args
@@ -31,7 +33,7 @@ class Encoder(tf.keras.Model):
 class Decoder(tf.keras.Model):
     def __init__(self, args):
         """
-        :param FakeArg args:
+        :param Arg args:
         """
         super(Decoder, self).__init__()
         self.args = args
@@ -53,7 +55,7 @@ class Decoder(tf.keras.Model):
 class Discriminator(tf.keras.Model):
     def __init__(self, args, encoder):
         """
-        :param FakeArg args:
+        :param Arg args:
         """
         super(Discriminator, self).__init__()
         self.args = args
@@ -74,7 +76,7 @@ class Discriminator(tf.keras.Model):
 class Generator(tf.keras.Model):
     def __init__(self, args, decoder):
         """
-        :param FakeArg args:
+        :param Arg args:
         """
         super(Generator, self).__init__()
         self.args = args
@@ -98,7 +100,7 @@ class Generator(tf.keras.Model):
 class Adjuster(tf.keras.Model):
     def __init__(self, args, encoder, decoder):
         """
-        :param FakeArg args:
+        :param Arg args:
         """
         super(Adjuster, self).__init__()
         self.args = args
@@ -126,7 +128,7 @@ class Adjuster(tf.keras.Model):
 class Trainer:
     def __init__(self, args, generator, discriminator, adjuster, dataset):
         """
-        :param FakeArg args:
+        :param Arg args:
         :param Generator generator:
         :param Discriminator discriminator:
         :param Adjuster adjuster:
@@ -148,7 +150,7 @@ class Trainer:
                                               adjuster_optimizer=self.adjuster_optimizer)
         if path.isdir(path.join(self.args.result_dir, "checkpoint")) and self.args.restore:
             self.checkpoint.restore(tf.train.latest_checkpoint(path.join(self.args.result_dir, "checkpoint")))
-        self.make_result_dir()
+        self.init_result_dir()
         self.writer = tf.contrib.summary.create_file_writer(path.join(self.args.result_dir, "log"))
         self.writer.set_as_default()
 
@@ -293,11 +295,11 @@ class Trainer:
                     if losses[2] is not None:
                         tf.contrib.summary.scalar('loss/adj', losses[2])
                 # Terminal平均输出
-                prog_add = []
+                progress_add = []
                 for label, loss in zip(loss_label, losses):
                     if loss is not None:
-                        prog_add.append((label, loss))
-                progress_bar.add(self.args.batch_size, prog_add)
+                        progress_add.append((label, loss))
+                progress_bar.add(self.args.batch_size, progress_add)
 
                 # 输出训练生成图像
                 if b % self.args.freq_gen is 0:
@@ -327,11 +329,16 @@ class Trainer:
 
             self.checkpoint.save(path.join(self.args.result_dir, "checkpoint", str(e)))
 
-    def make_result_dir(self):
+    def init_result_dir(self):
         dirs = [".", "train/gen", "train/adj", "test/adj", "test/gen", "test/disc", "checkpoint", "log"]
         for item in dirs:
             if not path.exists(path.join(self.args.result_dir, item)):
                 makedirs(path.join(self.args.result_dir, item))
+        shutil.copyfile(self.args.env_file, path.join(self.args.result_dir, "config.json"))
+        if not self.args.debug:
+            repo = Repo(".")
+            with open(path.join(self.args.result_dir, "config.json"), "wb") as f:
+                repo.archive(f)
 
     def plot(self):
         # todo: the shapes and the graph doesn't ok
