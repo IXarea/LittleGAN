@@ -162,6 +162,12 @@ class Trainer:
             name = model.__class__.__name__
             self.part_weights[name] = [[model.weights[layer] for layer in group] for group in self.part_groups[name]]
 
+        self.all_weights = {
+            "Generator": self.generator.weights,
+            "Discriminator": self.discriminator.weights,
+            "Adjuster": [self.adjuster.weights[w] for w in [16, 17, 18, 19, 36, 37]]
+        }
+
         self.test_image, self.test_cond = self.dataset.iterator.get_next()
         self.test_noise = tf.random_normal([self.test_cond.shape[0], self.args.noise_dim])
 
@@ -212,10 +218,8 @@ class Trainer:
         if self.args.use_partition and batch_no % (self.args.partition_interval + 1) is 0:
             weights = self.part_weights[name]
             return weights[(batch_no // (self.args.partition_interval + 1)) % weights.__len__()]
-        if name in ["Generator", "Discriminator"]:
-            return model.weights
         else:
-            return None
+            return self.all_weights[name]
 
     def _train_step(self, batch_no):
         real_image, real_cond = self.dataset.iterator.get_next()
@@ -243,18 +247,18 @@ class Trainer:
         self.discriminator_optimizer.apply_gradients(zip(gradients_of_disc, self._get_train_weight(self.discriminator, batch_no)))
         if self.args.train_adj:
             adj_weight = self._get_train_weight(self.adjuster, batch_no)
-            if adj_weight is not None:
-                with tf.GradientTape() as adj_tape:
-                    adj_real_image = self.adjuster([real_image, real_cond])
-                    adj_fake_image = self.adjuster([fake_image, real_cond])
-                    adj_fake_pr, adj_fake_c = self.discriminator(adj_fake_image)
-                    adj_real_pr, adj_real_c = self.discriminator(adj_real_image)
 
-                    adj_loss = self.adjuster_loss(real_cond, adj_real_c, adj_real_pr, adj_fake_c, adj_fake_pr, real_image, adj_real_image, adj_fake_image)
-                gradients_of_adj = adj_tape.gradient(adj_loss, adj_weight)
-                self.adjuster_optimizer.apply_gradients(zip(gradients_of_adj, adj_weight))
+            with tf.GradientTape() as adj_tape:
+                adj_real_image = self.adjuster([real_image, real_cond])
+                adj_fake_image = self.adjuster([fake_image, real_cond])
+                adj_fake_pr, adj_fake_c = self.discriminator(adj_fake_image)
+                adj_real_pr, adj_real_c = self.discriminator(adj_real_image)
 
-                return fake_image, adj_real_image, adj_fake_image, gen_loss, disc_loss, adj_loss
+                adj_loss = self.adjuster_loss(real_cond, adj_real_c, adj_real_pr, adj_fake_c, adj_fake_pr, real_image, adj_real_image, adj_fake_image)
+            gradients_of_adj = adj_tape.gradient(adj_loss, adj_weight)
+            self.adjuster_optimizer.apply_gradients(zip(gradients_of_adj, adj_weight))
+
+            return fake_image, adj_real_image, adj_fake_image, gen_loss, disc_loss, adj_loss
 
         return fake_image, None, None, gen_loss, disc_loss, None
 
