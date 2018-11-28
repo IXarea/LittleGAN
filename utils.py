@@ -62,3 +62,7 @@ def save_image(image, path=None, shape=(None, None)):
         image.show()
     else:
         image.save(path)
+
+
+def soft(x):
+    return 0.96 * x + 0.02

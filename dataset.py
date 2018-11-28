@@ -1,5 +1,6 @@
 import tensorflow as tf
 from glob import glob
+from utils import soft
 
 
 class CelebA:
@@ -25,7 +26,7 @@ class CelebA:
         image.set_shape([self.args.image_dim, self.args.image_dim, self.args.image_channel])
         image = tf.cast(image, tf.float32)
         image = self.data_rescale(image)
-        return image, tf.string_to_number(label)
+        return image, soft(tf.string_to_number(label))
 
     @staticmethod
     def _get_attr_list(attr_file, attr_filter):
