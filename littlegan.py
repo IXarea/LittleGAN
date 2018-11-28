@@ -176,7 +176,7 @@ class Trainer:
     def _init_graph(self):
 
         real_image, real_cond = self.dataset.iterator.get_next()
-        noise = tf.random_normal([real_cond.shape[0], self.args.noise_dim])
+        noise = tf.random_uniform([real_cond.shape[0], self.args.noise_dim])
         self.discriminator(real_image)
         self.generator([noise, real_cond])
         self.adjuster([real_image, real_cond])

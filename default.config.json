@@ -4,7 +4,7 @@
   "image_path": "X:\\dataset\\test",
   "attr_path": "X:\\dataset\\test.txt",
   "image_ext": "jpg",
-  "image_dim": 128,
+  "image_dim": 93,
   "attr": [
     8,
     15,
