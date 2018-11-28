@@ -183,21 +183,21 @@ class Trainer:
 
     @staticmethod
     def discriminator_loss(real_true_c, real_predict_c, real_predict_pr, fake_predict_pr):
-        return (tf.reduce_mean(tf.abs(real_true_c - real_predict_c)) * 2
-                + tf.reduce_mean(tf.abs(soft(1) - real_predict_pr))
-                + tf.reduce_mean(tf.abs(soft(0) - fake_predict_pr)))
+        return (tf.keras.losses.binary_crossentropy(real_true_c, real_predict_c) * 2
+                + tf.keras.losses.binary_crossentropy(soft(1), real_predict_pr)
+                + tf.keras.losses.binary_crossentropy(soft(0), fake_predict_pr))
 
     def generator_loss(self, cond_ori, cond_disc, pr_disc, image_ori, image_gen):
-        return (tf.reduce_mean(tf.abs(soft(1) - pr_disc))
-                + tf.reduce_mean(tf.abs(cond_ori - cond_disc))
+        return (tf.keras.losses.binary_crossentropy(soft(1), pr_disc)
+                + tf.keras.losses.binary_crossentropy(cond_ori, cond_disc)
                 + tf.reduce_mean(self.args.l1_lambda * tf.abs(image_ori - image_gen)))
 
     def adjuster_loss(self, cond_ori, cond_disc_real, pr_disc_real, cond_disc_fake, pr_disc_fake, image_ori, image_adj_real, image_adj_fake):
-        fake = (tf.reduce_mean(tf.abs(soft(1) - pr_disc_fake))
-                + tf.reduce_mean(tf.abs(cond_ori - cond_disc_fake))
+        fake = (tf.keras.losses.binary_crossentropy(soft(1), pr_disc_fake)
+                + tf.keras.losses.binary_crossentropy(cond_ori, cond_disc_fake)
                 + self.args.l1_lambda * tf.reduce_mean(tf.abs(image_ori - image_adj_fake)))
-        real = (tf.reduce_mean(tf.abs(soft(1) - pr_disc_real))
-                + tf.reduce_mean(tf.abs(cond_ori - cond_disc_real))
+        real = (tf.keras.losses.binary_crossentropy(soft(1), pr_disc_real)
+                + tf.keras.losses.binary_crossentropy(cond_ori, cond_disc_real)
                 + self.args.l1_lambda * tf.reduce_mean(tf.abs(image_ori - image_adj_real)))
         return real + fake
 
