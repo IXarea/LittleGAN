@@ -48,7 +48,7 @@ class Decoder(tf.keras.Model):
                 x = tf.add(x, add[i - 1])
             x = self.__getattribute__("conv" + str(i))(x)
             x = self.__getattribute__("norm" + str(i))(x)
-            x = tf.nn.relu(x)
+            x = tf.nn.leaky_relu(x, self.args.leaky_alpha)
         return x
 
 
@@ -89,7 +89,7 @@ class Generator(tf.keras.Model):
     def call(self, inputs, training=None, mask=None):
         x = tf.concat(inputs, -1)
         x = self.dense(x)
-        x = tf.nn.relu(x)
+        x = tf.nn.leaky_relu(x, self.args.leaky_alpha)
         x = tf.reshape(x, [-1, self.args.init_dim, self.args.init_dim, self.args.conv_filter[0]])
         x = self.norm(x)
         x = self.decoder([x, [None] * 4])
