@@ -1,6 +1,6 @@
 import tensorflow as tf
 from glob import glob
-from utils import soft
+from utils import soft, data_rescale
 
 
 class CelebA:
@@ -25,7 +25,7 @@ class CelebA:
         image = tf.image.decode_image(image, self.args.image_channel)
         image.set_shape([self.args.image_dim, self.args.image_dim, self.args.image_channel])
         image = tf.cast(image, tf.float32)
-        image = self.data_rescale(image)
+        image = data_rescale(image)
         return image, soft(tf.string_to_number(label))
 
     @staticmethod
@@ -44,11 +44,3 @@ class CelebA:
     def get_new_iterator(self):
         self.iterator = self.dataset.make_one_shot_iterator()
         return self.iterator
-
-    @staticmethod
-    def data_rescale(x):
-        return tf.subtract(tf.divide(x, 127.5), 1)
-
-    @staticmethod
-    def inverse_rescale(y):
-        return tf.round(tf.multiply(tf.add(y, 1), 127.5))
