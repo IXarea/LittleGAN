@@ -18,7 +18,6 @@ class CelebA:
         dataset = dataset.apply(tf.data.experimental.map_and_batch(map_func=self._parse, batch_size=args.batch_size, num_parallel_calls=4))
         dataset = dataset.shuffle(buffer_size=self.args.prefetch)
         self.dataset = dataset.prefetch(buffer_size=self.args.prefetch)
-        self.iterator = dataset.make_one_shot_iterator()
 
     def _parse(self, filename, label):
         image = tf.read_file(filename)
@@ -42,5 +41,4 @@ class CelebA:
         return attributes_list
 
     def get_new_iterator(self):
-        self.iterator = self.dataset.make_one_shot_iterator()
-        return self.iterator
+        return self.dataset.make_one_shot_iterator()

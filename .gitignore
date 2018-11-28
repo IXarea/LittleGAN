@@ -7,4 +7,5 @@ __pycache__
 Thumbs.db
 .vscode
 *.config.json
-!default.config.json
+!sample.config.json
+test_data.npz
