@@ -8,4 +8,3 @@ Thumbs.db
 .vscode
 *.config.json
 !sample.config.json
-test_data.npz

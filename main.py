@@ -11,14 +11,15 @@ from dataset import CelebA
 from littlegan import Trainer, Adjuster, Discriminator, Decoder, Encoder, Generator
 
 from git import Repo
+import time
 
-dec = Decoder(args)
-enc = Encoder(args)
-gen = Generator(args, dec)
-disc = Discriminator(args, enc)
-adj = Adjuster(args, enc, dec)
-data = CelebA(args)
-model = Trainer(args, gen, disc, adj, data)
+decoder = Decoder(args)
+encoder = Encoder(args)
+generator = Generator(args, decoder)
+discriminator = Discriminator(args, encoder)
+adjuster = Adjuster(args, encoder, decoder)
+# data = CelebA(args)
+# model = Trainer(args, gen, disc, adj, data)
 
 print("Application Params: ", args, "\r\n")
 cond_dim = len(args.attr)
@@ -26,22 +27,38 @@ cond_dim = len(args.attr)
 print("Using GPUs: ", args.gpu)
 
 if args.mode == "train":
-    if args.attr_path is None or args.image_path.__len__() == 0:
-        raise ValueError("params error!")
-    data = CelebA(args)
-    print("\r\nImage Flows From: ", args.image_path, "   Image Count: ", args.batch_size * data.batches)
-    print("\r\nUsing Attribute: ", data.label)
     repo = Repo(".")
     if repo.is_dirty() and not args.debug:  # 程序被修改且不是测试模式
         raise EnvironmentError("Git repo is Dirty! Please train after committed.")
+    data = CelebA(args)
+    print("\r\nImage Flows From: ", args.image_path, "   Image Count: ", args.batch_size * data.batches)
+    print("\r\nUsing Attribute: ", data.label)
+    model = Trainer(args, generator, discriminator, adjuster, data)
     model.train()
 elif args.mode == "visual":  # loss etc的可视化
     print("The result path is ", path.join(args.result_dir, "log"))
     system("tensorboard --host 0.0.0.0 --logdir " + path.join(args.result_dir, "log"))
 elif args.mode == "plot":
+    model = Trainer(args, generator, discriminator, adjuster, None)
     model.plot()  # 输出模型结构图
+elif args.mode == "random-sample":
+    args.batch_size = args.random_sample_size
+    args.prefetch = args.random_sample_size
+    data = CelebA(args)
+    model = Trainer(args, generator, discriminator, adjuster, data)
+    iterator = data.get_new_iterator()
+    image, cond = iterator.get_next()
+    noise = tf.random_uniform([cond.shape[0], args.noise_dim])
+    time = int(time.time())
+    model.predict(noise, cond, image,
+                  path.join(args.result_dir, "sample", "generator-%s.jpg" % time),
+                  path.join(args.result_dir, "sample", "discriminator%s.json" % time),
+                  path.join(args.result_dir, "sample", "adjuster%s.jpg" % time)
+                  )
+
 else:
     print("没有此模式：", args.mode)
+
 """
 elif args.mode == "predict":  # elif=else if
     cond = to_categorical(range(cond_dim), cond_dim) * 1.65 - 0.7  # 规则生成属性，为防止属性过大或过小*1.65-0.7

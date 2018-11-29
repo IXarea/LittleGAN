@@ -33,6 +33,9 @@
   "freq_gen": 100,
   "freq_test": 2000,
   "all_result_dir": "/path/to/LittleGAN-result",
+  "test_data_dir": "/path/to/LittleGAN-test",
+  "random_sample_size": 100,
+  "evaluate_sample_size": 1000,
   "restore": true,
   "train_adj": true,
   "prefetch": 320

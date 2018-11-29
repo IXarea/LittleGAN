@@ -88,6 +88,13 @@ class Generator(tf.keras.Model):
 
     @tf.contrib.eager.defun
     def call(self, inputs, training=None, mask=None):
+        """
+        生成器
+        :param inputs: [noise, real_cond]
+        :param training:
+        :param mask:
+        :return:
+        """
         x = tf.concat(inputs, -1)
         x = self.dense(x)
         x = tf.nn.leaky_relu(x, self.args.leaky_alpha)
@@ -174,10 +181,10 @@ class Trainer:
 
     def _init_graph(self):
         iterator, self.test_noise, self.test_cond, self.test_image = None, None, None, None
-        if path.isfile("./test_data.npz"):
-            data = np.load("./test_data.npz")
+        npz_file = path.join(self.args.test_data_dir, "test_data_" + str(self.args.batch_size) + ".npz")
+        if path.isfile(npz_file):
+            data = np.load(npz_file)
             self.test_noise, self.test_cond, self.test_image = data["n"], data["c"], data["i"]
-
         while True:
             try:
                 self.discriminator(self.test_image)
@@ -189,8 +196,8 @@ class Trainer:
                 if None is iterator:
                     iterator = self.dataset.get_new_iterator()
                 self.test_image, self.test_cond = iterator.get_next()
-                self.test_noise = tf.random_normal([self.test_cond.shape[0], self.args.noise_dim])
-                np.savez_compressed("./test_data.npz", n=self.test_noise, c=self.test_cond, i=self.test_image)
+                self.test_noise = tf.random_uniform([self.test_cond.shape[0], self.args.noise_dim])
+                np.savez_compressed(npz_file, n=self.test_noise, c=self.test_cond, i=self.test_image)
 
     @staticmethod
     def discriminator_loss(real_true_c, real_predict_c, real_predict_pr, fake_predict_pr):
@@ -235,7 +242,7 @@ class Trainer:
             return self.all_weights[name]
 
     def _train_step(self, batch_no, real_image, real_cond):
-        noise = tf.random_normal([self.args.batch_size, self.args.noise_dim])
+        noise = tf.random_uniform([self.args.batch_size, self.args.noise_dim])
         with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
             fake_image = self.generator([noise, real_cond])
             real_pr, real_c = self.discriminator(real_image)
@@ -323,27 +330,16 @@ class Trainer:
                         adj_image = tf.concat(result[1:3], 0)
                         save_image(adj_image, path.join(self.args.result_dir, "train", "adj", "%d-%d.jpg" % (e, b)))
                 if b % self.args.freq_test is 0:
-                    gen_image = self.generator([self.test_noise, self.test_cond])
-                    save_image(gen_image, path.join(self.args.result_dir, "test", "gen", "%d-%d.jpg" % (e, b)))
-                    with open(path.join(self.args.result_dir, "test", "disc", "%d-%d.json" % (e, b)), "w") as f:
-                        save = dict()
-                        save["real_cond"] = self.test_cond
-                        save["real_pr"], save["real_c"] = self.discriminator(self.test_image)
-                        save["fake_pr"], save["fake_c"] = self.discriminator(gen_image)
-                        for x in save:
-                            save[x] = (tf.round(save[x] * 10)).numpy().astype(int).tolist()
-                        json.dump(save, f)
-
-                    if self.args.train_adj:
-                        adj_real_image = self.adjuster([self.test_image, self.test_cond])
-                        adj_fake_image = self.adjuster([gen_image, self.test_cond])
-                        adj_image = tf.concat([adj_real_image, adj_fake_image], 0)
-                        save_image(adj_image, path.join(self.args.result_dir, "test", "adj", "%d-%d.jpg" % (e, b)))
+                    self.predict(self.test_noise, self.test_cond, self.test_image,
+                                 path.join(self.args.result_dir, "test", "gen", "%d-%d.jpg" % (e, b)),
+                                 path.join(self.args.result_dir, "test", "disc", "%d-%d.json" % (e, b)),
+                                 path.join(self.args.result_dir, "test", "adj", "%d-%d.jpg" % (e, b))
+                                 )
 
             self.checkpoint.save(path.join(self.args.result_dir, "checkpoint", str(e)))
 
     def init_result_dir(self):
-        dirs = [".", "train/gen", "train/adj", "test/adj", "test/gen", "test/disc", "checkpoint", "log"]
+        dirs = [".", "train/gen", "train/adj", "test/adj", "test/gen", "test/disc", "checkpoint", "log", "sample", "evaluate/sample"]
         for item in dirs:
             if not path.exists(path.join(self.args.result_dir, item)):
                 makedirs(path.join(self.args.result_dir, item))
@@ -369,3 +365,27 @@ class Trainer:
                 item.summary(print_fn=print_fn)
                 print_fn("\n")
                 tf.keras.utils.plot_model(item, to_file=path.join(self.args.result_dir, "image", "%s.png" % name), show_shapes=True)
+
+    def predict(self, noise, cond, image, gen_image_save_path=None, json_save_path=None, adj_image_save_path=None):
+        gen_image = self.generator([noise, cond])
+        if None is not gen_image_save_path:
+            save_image(gen_image, gen_image_save_path)
+
+        save = dict()
+        save["real_cond"] = cond
+        save["real_pr"], save["real_c"] = self.discriminator(image)
+        save["fake_pr"], save["fake_c"] = self.discriminator(gen_image)
+        for x in save:
+            save[x] = (tf.round(save[x] * 10)).numpy().astype(int).tolist()
+        if None is not json_save_path:
+            with open(json_save_path, "w") as f:
+                json.dump(save, f)
+        adj_fake_image, adj_real_image = None, None
+        if self.args.train_adj:
+            adj_real_image = self.adjuster([image, cond])
+            adj_fake_image = self.adjuster([gen_image, cond])
+            adj_image = tf.concat([adj_real_image, adj_fake_image], 0)
+            if None is not adj_image_save_path:
+                save_image(adj_image, adj_image_save_path)
+
+        return gen_image, save, adj_real_image, adj_fake_image
