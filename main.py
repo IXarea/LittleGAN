@@ -8,7 +8,8 @@ tf.enable_eager_execution()
 from os import path, system
 from dataset import CelebA
 from utils import save_image
-from littlegan import Trainer, Adjuster, Discriminator, Decoder, Encoder, Generator
+from model import Adjuster, Discriminator, Decoder, Encoder, Generator
+from eager_trainer import EagerTrainer
 from git import Repo
 import time
 import numpy as np
@@ -26,7 +27,7 @@ data = CelebA(args)
 print("\r\nImage Flows From: ", args.image_path, "   Image Count: ", args.batch_size * data.batches)
 print("\r\nUsing Attribute: ", data.label)
 
-model = Trainer(args, generator, discriminator, adjuster, data)
+model = EagerTrainer(args, generator, discriminator, adjuster, data)
 
 if args.mode == "train":
     repo = Repo(".")
