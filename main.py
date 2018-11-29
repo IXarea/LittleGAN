@@ -95,7 +95,7 @@ elif args.mode == "condition-sample":
     bar = tf.keras.utils.Progbar(args.condition_sample_batch)
     for i in range(1, 1 + args.condition_sample_batch):
         cond = tf.keras.utils.to_categorical(range(args.cond_dim), args.cond_dim) * 0.88 + 0.04
-        noise = np.random.uniform(size=[1, args.noise_dim])
+        noise = np.random.uniform(size=[1, args.noise_dim]).astype(np.float32)
         noise = np.repeat(noise, args.cond_dim, 0)
         img = model.generator([noise, cond])
         # img2 = img[[x for x in range(7) if x % 7 in [0, 3, 4, 5]]]
