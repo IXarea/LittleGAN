@@ -339,7 +339,7 @@ class Trainer:
             self.checkpoint.save(path.join(self.args.result_dir, "checkpoint", str(e)))
 
     def init_result_dir(self):
-        dirs = [".", "train/gen", "train/adj", "test/adj", "test/gen", "test/disc", "checkpoint", "log", "sample", "evaluate/sample"]
+        dirs = [".", "train/gen", "train/adj", "test/adj", "test/gen", "test/disc", "checkpoint", "log", "sample", "evaluate/gen", "evaluate/adj"]
         for item in dirs:
             if not path.exists(path.join(self.args.result_dir, item)):
                 makedirs(path.join(self.args.result_dir, item))
@@ -375,8 +375,12 @@ class Trainer:
         save["real_cond"] = cond
         save["real_pr"], save["real_c"] = self.discriminator(image)
         save["fake_pr"], save["fake_c"] = self.discriminator(gen_image)
-        for x in save:
-            save[x] = (tf.round(save[x] * 10)).numpy().astype(int).tolist()
+        save["real_pr_mse"] = tf.reduce_mean(tf.keras.metrics.mean_squared_error(soft(1), save["real_pr"]), axis=0).numpy().astype(float)
+        save["real_c_mse"] = tf.reduce_mean(tf.keras.metrics.mean_squared_error(cond, save["real_c"]), axis=0).numpy().astype(float)
+        save["fake_pr_mse"] = tf.reduce_mean(tf.keras.metrics.mean_squared_error(soft(0), save["fake_pr"]), axis=0).numpy().astype(float)
+        save["fake_c_mse"] = tf.reduce_mean(tf.keras.metrics.mean_squared_error(cond, save["fake_c"]), axis=0).numpy().astype(float)
+        for x in ["real_cond", "real_pr", "real_c", "fake_c", "fake_pr"]:
+            save[x] = (tf.round(save[x] * 100)).numpy().astype(int).tolist()
         if None is not json_save_path:
             with open(json_save_path, "w") as f:
                 json.dump(save, f)

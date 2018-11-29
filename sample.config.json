@@ -34,8 +34,9 @@
   "freq_test": 2000,
   "all_result_dir": "/path/to/LittleGAN-result",
   "test_data_dir": "/path/to/LittleGAN-test",
-  "random_sample_size": 100,
-  "evaluate_sample_size": 1000,
+  "evaluate_pre_calculated": "fid_stats_celeba_128_all.npz",
+  "random_sample_batch": 4,
+  "evaluate_sample_batch": 50,
   "restore": true,
   "train_adj": true,
   "prefetch": 320

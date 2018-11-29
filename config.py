@@ -8,7 +8,7 @@ class Arg:
     def __init__(self):
         parser = ArgumentParser(prog="LittleGAN", description="The code for paper: LittleGAN")
 
-        parser.add_argument("mode", type=str, help="run mode", default="train", choices=["train", "plot", "visual", "random-sample"])
+        parser.add_argument("mode", type=str, help="run mode", default="train", choices=["train", "plot", "visual", "random-sample", "evaluate"])
         parser.add_argument("exp_name", type=str, help="experience name")
         parser.add_argument("-e", "--env", type=str, help="config environment", default="default")
         parser.add_argument("-g", "--gpu", type=str, required=False, help="gpu ids, eg: 0,1,2,3", default="-1")

@@ -6,12 +6,12 @@ import tensorflow as tf
 tf.enable_eager_execution()
 
 from os import path, system
-
 from dataset import CelebA
+from utils import save_image
 from littlegan import Trainer, Adjuster, Discriminator, Decoder, Encoder, Generator
-
 from git import Repo
 import time
+import numpy as np
 
 decoder = Decoder(args)
 encoder = Encoder(args)
@@ -26,35 +26,73 @@ cond_dim = len(args.attr)
 
 print("Using GPUs: ", args.gpu)
 
+data = CelebA(args)
+print("\r\nImage Flows From: ", args.image_path, "   Image Count: ", args.batch_size * data.batches)
+print("\r\nUsing Attribute: ", data.label)
+
+model = Trainer(args, generator, discriminator, adjuster, data)
+
 if args.mode == "train":
     repo = Repo(".")
     if repo.is_dirty() and not args.debug:  # 程序被修改且不是测试模式
         raise EnvironmentError("Git repo is Dirty! Please train after committed.")
-    data = CelebA(args)
-    print("\r\nImage Flows From: ", args.image_path, "   Image Count: ", args.batch_size * data.batches)
-    print("\r\nUsing Attribute: ", data.label)
-    model = Trainer(args, generator, discriminator, adjuster, data)
     model.train()
 elif args.mode == "visual":  # loss etc的可视化
     print("The result path is ", path.join(args.result_dir, "log"))
     system("tensorboard --host 0.0.0.0 --logdir " + path.join(args.result_dir, "log"))
 elif args.mode == "plot":
-    model = Trainer(args, generator, discriminator, adjuster, None)
     model.plot()  # 输出模型结构图
 elif args.mode == "random-sample":
-    args.batch_size = args.random_sample_size
-    args.prefetch = args.random_sample_size
-    data = CelebA(args)
-    model = Trainer(args, generator, discriminator, adjuster, data)
     iterator = data.get_new_iterator()
-    image, cond = iterator.get_next()
-    noise = tf.random_uniform([cond.shape[0], args.noise_dim])
-    time = int(time.time())
-    model.predict(noise, cond, image,
-                  path.join(args.result_dir, "sample", "generator-%s.jpg" % time),
-                  path.join(args.result_dir, "sample", "discriminator%s.json" % time),
-                  path.join(args.result_dir, "sample", "adjuster%s.jpg" % time)
-                  )
+    now_time = int(time.time())
+    for b in range(args.random_sample_batch):
+        image, cond = iterator.get_next()
+        noise = tf.random_uniform([cond.shape[0], args.noise_dim])
+
+        model.predict(noise, cond, image,
+                      path.join(args.result_dir, "sample", "generator-%s-%d.jpg" % (now_time, b)),
+                      path.join(args.result_dir, "sample", "discriminator-%s-%d.json" % (now_time, b)),
+                      path.join(args.result_dir, "sample", "adjuster-%s-%d.jpg" % (now_time, b))
+                      )
+        np.savez_compressed(path.join(args.result_dir, "sample", "input_data-%s-%d.npz" % (now_time, b)), n=noise, c=cond, i=image)
+elif args.mode == "evaluate":
+    iterator = data.get_new_iterator()
+    progress = tf.keras.utils.Progbar(args.evaluate_sample_batch * args.batch_size)
+    for b in range(args.evaluate_sample_batch):
+        base_index = b * args.batch_size + 1
+        image, cond = iterator.get_next()
+        noise = tf.random_uniform([cond.shape[0], args.noise_dim])
+        gen_image, save, adj_real_image, adj_fake_image = model.predict(noise, cond, image,
+                                                                        None, path.join(args.result_dir, "evaluate", "discriminator.json"), None)
+        for i in range(args.batch_size):
+            save_image(gen_image[i], path.join(args.result_dir, "evaluate", "gen", str(base_index + i) + ".jpg"))
+            if adj_real_image is not None and adj_fake_image is not None:
+                save_image(adj_real_image[i], path.join(args.result_dir, "evaluate", "adj", "real_" + str(base_index + i) + ".jpg"))
+                save_image(adj_fake_image[i], path.join(args.result_dir, "evaluate", "adj", "fake_" + str(base_index + i) + ".jpg"))
+        progress.add(args.batch_size)
+
+    if not args.gpu:
+        args.gpu = [-1]
+
+    gen_cmd = "python evaluate.py calc %s %s %s --gpu %s" % (
+        path.join(args.result_dir, "evaluate", "gen"),
+        path.join(args.test_data_dir, args.evaluate_pre_calculated),
+        args.test_data_dir,
+        ",".join(map(str, args.gpu))
+    )
+
+    print("Running: \"", gen_cmd, "\"")
+    system(gen_cmd)
+    if args.train_adj:
+        adj_cmd = "python evaluate.py calc %s %s %s --gpu %s" % (
+            path.join(args.result_dir, "evaluate", "adj"),
+            path.join(args.test_data_dir, args.evaluate_pre_calculated),
+            args.test_data_dir,
+            ",".join(map(str, args.gpu))
+        )
+        print("Running: \"", adj_cmd, "\"")
+        system(adj_cmd)
+
 
 else:
     print("没有此模式：", args.mode)
