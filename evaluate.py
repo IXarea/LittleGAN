@@ -10,6 +10,7 @@ parser.add_argument("mode")
 parser.add_argument("image_path")
 parser.add_argument("stats_path")
 parser.add_argument("model_path")
+parser.add_argument("output_file")
 parser.add_argument("--gpu", default="-1")
 args = parser.parse_args()
 
@@ -20,7 +21,6 @@ import fid
 from scipy.misc import imread
 import tensorflow as tf
 
-print("check for inception model..")
 inception_path = fid.check_or_download_inception(args.model_path)
 
 if args.mode == "pre-calculate":
@@ -54,3 +54,5 @@ else:
 
     fid_value = fid.calculate_frechet_distance(mu_gen, sigma_gen, mu_real, sigma_real)
     print("FID: %s" % fid_value)
+    with open(args.output_file, "w") as f:
+        print(fid_value, file=f)

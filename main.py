@@ -74,21 +74,23 @@ elif args.mode == "evaluate":
     if not args.gpu:
         args.gpu = [-1]
 
-    gen_cmd = "python evaluate.py calc %s %s %s --gpu %s" % (
+    gen_cmd = "python evaluate.py calc %s %s %s %s --gpu %s" % (
         path.join(args.result_dir, "evaluate", "gen"),
         path.join(args.test_data_dir, args.evaluate_pre_calculated),
         args.test_data_dir,
-        ",".join(map(str, args.gpu))
+        ",".join(map(str, args.gpu)),
+        path.join(args.result_dir, "evaluate", "fid-gen.log")
     )
 
     print("Running: \"", gen_cmd, "\"")
     system(gen_cmd)
     if args.train_adj:
-        adj_cmd = "python evaluate.py calc %s %s %s --gpu %s" % (
+        adj_cmd = "python evaluate.py calc %s %s %s %s --gpu %s" % (
             path.join(args.result_dir, "evaluate", "adj"),
             path.join(args.test_data_dir, args.evaluate_pre_calculated),
             args.test_data_dir,
-            ",".join(map(str, args.gpu))
+            ",".join(map(str, args.gpu)),
+            path.join(args.result_dir, "evaluate", "fid-adj.log")
         )
         print("Running: \"", adj_cmd, "\"")
         system(adj_cmd)
