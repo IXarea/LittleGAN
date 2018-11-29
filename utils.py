@@ -1,26 +1,6 @@
 import numpy as np
 from PIL import Image
-from tensorflow.python.keras.layers import Add, Conv2D, LeakyReLU
-from instance import InstanceNormalization
-from dataset import CelebA
-
-
-def add_sequential_layer(layer_in, layers_add, trainable=None):
-    layer_out = layer_in
-    for layer in layers_add:
-        if trainable is not None:
-            layer.trainable = trainable
-        layer_out = layer(layer_out)
-    return layer_out
-
-
-def residual_block(layer, n_conv, kernel, leaky_alpha):
-    x = Conv2D(n_conv, kernel_size=kernel, strides=1, padding='same')(layer)
-    x = InstanceNormalization()(x)
-    x = LeakyReLU(alpha=leaky_alpha)(x)
-    x = Conv2D(int(layer.shape[-1]), kernel_size=kernel, strides=1, padding='same')(x)
-    x = Add()([layer, x])
-    return x
+import tensorflow as tf
 
 
 def save_image(image, path=None, shape=(None, None)):
@@ -30,7 +10,7 @@ def save_image(image, path=None, shape=(None, None)):
     :param tuple shape:
     :return:
     """
-    image = CelebA.inverse_rescale(image).numpy().astype(np.uint8)
+    image = inverse_rescale(image).numpy().astype(np.uint8)
     if image.shape.__len__() is 4:
         width, height = shape
 
@@ -62,3 +42,15 @@ def save_image(image, path=None, shape=(None, None)):
         image.show()
     else:
         image.save(path)
+
+
+def soft(x):
+    return 0.96 * x + 0.02
+
+
+def data_rescale(x):
+    return tf.subtract(tf.divide(x, 127.5), 1)
+
+
+def inverse_rescale(y):
+    return tf.round(tf.multiply(tf.add(y, 1), 127.5))

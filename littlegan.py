@@ -1,9 +1,10 @@
 import tensorflow as tf
 from instance import InstanceNormalization
 from os import path, makedirs
-from utils import save_image
+from utils import save_image, soft
 import json
 import shutil
+import numpy as np
 from git import Repo
 
 
@@ -141,6 +142,7 @@ class Trainer:
         self.discriminator = discriminator
         self.generator = generator
         self.models = [self.discriminator, self.generator, self.adjuster]
+
         self._init_graph()
         self.generator_optimizer = tf.train.AdamOptimizer(args.lr)
         self.discriminator_optimizer = tf.train.AdamOptimizer(args.lr)
@@ -170,34 +172,43 @@ class Trainer:
             "Adjuster": [self.adjuster.weights[w] for w in [16, 17, 18, 19, 36, 37]]
         }
 
-        self.test_image, self.test_cond = self.dataset.iterator.get_next()
-        self.test_noise = tf.random_normal([self.test_cond.shape[0], self.args.noise_dim])
-
     def _init_graph(self):
+        iterator, self.test_noise, self.test_cond, self.test_image = None, None, None, None
+        if path.isfile("./test_data.npz"):
+            data = np.load("./test_data.npz")
+            self.test_noise, self.test_cond, self.test_image = data["n"], data["c"], data["i"]
 
-        real_image, real_cond = self.dataset.iterator.get_next()
-        noise = tf.random_uniform([real_cond.shape[0], self.args.noise_dim])
-        self.discriminator(real_image)
-        self.generator([noise, real_cond])
-        self.adjuster([real_image, real_cond])
+        while True:
+            try:
+                self.discriminator(self.test_image)
+                self.generator([self.test_noise, self.test_cond])
+                self.adjuster([self.test_image, self.test_cond])
+                break
+            except (tf.errors.InvalidArgumentError, AttributeError):
+                print("Test Data Error, Generating")
+                if None is iterator:
+                    iterator = self.dataset.get_new_iterator()
+                self.test_image, self.test_cond = iterator.get_next()
+                self.test_noise = tf.random_normal([self.test_cond.shape[0], self.args.noise_dim])
+                np.savez_compressed("./test_data.npz", n=self.test_noise, c=self.test_cond, i=self.test_image)
 
     @staticmethod
     def discriminator_loss(real_true_c, real_predict_c, real_predict_pr, fake_predict_pr):
-        return (tf.reduce_mean(tf.square(real_true_c - real_predict_c)) * 2
-                + tf.reduce_mean(tf.square(0.98 - real_predict_pr))
-                + tf.reduce_mean(tf.square(0.02 - fake_predict_pr)))
+        return (tf.reduce_mean(tf.keras.losses.binary_crossentropy(real_true_c, real_predict_c)) * 2
+                + tf.reduce_mean(tf.keras.losses.binary_crossentropy(soft(tf.ones(real_predict_pr.shape)), real_predict_pr))
+                + tf.reduce_mean(tf.keras.losses.binary_crossentropy(soft(tf.zeros(fake_predict_pr.shape)), fake_predict_pr)))
 
     def generator_loss(self, cond_ori, cond_disc, pr_disc, image_ori, image_gen):
-        return (tf.reduce_mean(tf.square(0.98 - pr_disc))
-                + tf.reduce_mean(tf.square(cond_ori - cond_disc))
-                + tf.reduce_mean(self.args.l1_lambda * tf.abs(image_ori - image_gen)))
+        return (tf.reduce_mean(tf.keras.losses.binary_crossentropy(soft(tf.ones(pr_disc.shape)), pr_disc))
+                + tf.reduce_mean(tf.keras.losses.binary_crossentropy(cond_ori, cond_disc))
+                + self.args.l1_lambda * tf.reduce_mean(tf.abs(image_ori - image_gen)))
 
     def adjuster_loss(self, cond_ori, cond_disc_real, pr_disc_real, cond_disc_fake, pr_disc_fake, image_ori, image_adj_real, image_adj_fake):
-        fake = (tf.reduce_mean(tf.square(0.98 - pr_disc_fake))
-                + tf.reduce_mean(tf.square(cond_ori - cond_disc_fake))
+        fake = (tf.reduce_mean(tf.keras.losses.binary_crossentropy(soft(tf.ones(pr_disc_fake.shape)), pr_disc_fake))
+                + tf.reduce_mean(tf.keras.losses.binary_crossentropy(cond_ori, cond_disc_fake))
                 + self.args.l1_lambda * tf.reduce_mean(tf.abs(image_ori - image_adj_fake)))
-        real = (tf.reduce_mean(tf.square(0.98 - pr_disc_real))
-                + tf.reduce_mean(tf.square(cond_ori - cond_disc_real))
+        real = (tf.reduce_mean(tf.keras.losses.binary_crossentropy(soft(tf.ones(pr_disc_real.shape)), pr_disc_real))
+                + tf.reduce_mean(tf.keras.losses.binary_crossentropy(cond_ori, cond_disc_real))
                 + self.args.l1_lambda * tf.reduce_mean(tf.abs(image_ori - image_adj_real)))
         return real + fake
 
@@ -209,7 +220,7 @@ class Trainer:
                 inter = real + alpha * (fake - real)
                 predict = f(inter)
             gradients = gp_tape.gradient(predict, f.weights)[0]
-            slopes = tf.sqrt(tf.reduce_sum(tf.square(gradients), reduction_indices=range(1, inter.shape.ndims)))
+            slopes = tf.sqrt(tf.reduce_sum(tf.abs(gradients), reduction_indices=range(1, inter.shape.ndims)))
             gp = tf.reduce_mean((slopes - 1.) ** 2)
             return gp
         """
@@ -223,9 +234,8 @@ class Trainer:
         else:
             return self.all_weights[name]
 
-    def _train_step(self, batch_no):
-        real_image, real_cond = self.dataset.iterator.get_next()
-        noise = tf.random_normal([real_cond.shape[0], self.args.noise_dim])
+    def _train_step(self, batch_no, real_image, real_cond):
+        noise = tf.random_normal([self.args.batch_size, self.args.noise_dim])
         with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
             fake_image = self.generator([noise, real_cond])
             real_pr, real_c = self.discriminator(real_image)
@@ -280,13 +290,16 @@ class Trainer:
 
         for e in range(1, self.args.epoch):
             progress_bar = tf.keras.utils.Progbar(self.dataset.batches * self.args.batch_size)
-            self.dataset.get_new_iterator()
+            iterator = self.dataset.get_new_iterator()
             for b in range(1, self.dataset.batches + 1):
-
                 try:
-                    result = self._train_step(b)
+                    real_image, real_cond = iterator.get_next()
                 except tf.errors.OutOfRangeError:
                     break
+                if real_cond.shape[0] != self.args.batch_size:
+                    print("Skip one batch")
+                    break
+                result = self._train_step(b, real_image, real_cond)
                 losses = result[3:6]
                 global_step.assign_add(1)
                 with tf.contrib.summary.always_record_summaries():
