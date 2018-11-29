@@ -8,17 +8,24 @@ class Arg:
     def __init__(self):
         parser = ArgumentParser(prog="LittleGAN", description="The code for paper: LittleGAN")
 
-        parser.add_argument("mode", type=str, help="run mode", default="train", choices=["train", "plot", "visual", "random-sample", "evaluate"])
+        parser.add_argument("mode", type=str, help="run mode", default="train",
+                            choices=["train", "plot", "visual", "random-sample", "evaluate", "condition-sample"])
         parser.add_argument("exp_name", type=str, help="experience name")
         parser.add_argument("-e", "--env", type=str, help="config environment", default="default")
         parser.add_argument("-g", "--gpu", type=str, required=False, help="gpu ids, eg: 0,1,2,3", default="-1")
         parser.add_argument("--debug", help="use debug mode, ignore git repo is dirty", action="store_true")
+        parser.add_argument("--reuse", action="store_true")
         args = parser.parse_args()
+        sample_env = "sample.config.json"
+        with open(sample_env) as f:
+            config = json.load(f)
+            for item in config:
+                self.__setattr__(item, config[item])
         self.env_file = args.env + ".config.json"
         with open(self.env_file) as f:
             config = json.load(f)
-        for item in config:
-            self.__setattr__(item, config[item])
+            for item in config:
+                self.__setattr__(item, config[item])
         for item in args.__dict__:
             self.__setattr__(item, getattr(args, item))
 

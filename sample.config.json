@@ -4,7 +4,7 @@
   "image_path": "/path/to/image",
   "attr_path": "/path/to/attr/list.txt",
   "image_ext": "jpg",
-  "image_dim": 93,
+  "image_dim": 128,
   "attr": [
     8,
     15,
@@ -14,7 +14,7 @@
     36,
     39
   ],
-  "noise_dim": 128,
+  "noise_dim": 93,
   "init_dim": 8,
   "norm": "instance",
   "min_filter": 24,
@@ -36,6 +36,7 @@
   "test_data_dir": "/path/to/LittleGAN-test",
   "evaluate_pre_calculated": "fid_stats_celeba_128_all.npz",
   "random_sample_batch": 4,
+  "condition_sample_batch": 100,
   "evaluate_sample_batch": 50,
   "restore": true,
   "train_adj": true,
