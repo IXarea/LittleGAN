@@ -22,12 +22,12 @@ adjuster = Adjuster(args, encoder, decoder)
 
 print("Application Params: ", args, "\r\n")
 print("Using GPUs: ", args.gpu)
+if args.mode != "evaluate":
+    data = CelebA(args)
+    print("\r\nImage Flows From: ", args.image_path, "   Image Count: ", args.batch_size * data.batches)
+    print("\r\nUsing Attribute: ", data.label)
 
-data = CelebA(args)
-print("\r\nImage Flows From: ", args.image_path, "   Image Count: ", args.batch_size * data.batches)
-print("\r\nUsing Attribute: ", data.label)
-
-model = EagerTrainer(args, generator, discriminator, adjuster, data)
+    model = EagerTrainer(args, generator, discriminator, adjuster, data)
 
 if args.mode == "train":
     repo = Repo(".")
@@ -52,7 +52,7 @@ elif args.mode == "random-sample":
                       path.join(args.result_dir, "sample", "adjuster-%s-%d.jpg" % (now_time, b))
                       )
         np.savez_compressed(path.join(args.result_dir, "sample", "input_data-%s-%d.npz" % (now_time, b)), n=noise, c=cond, i=image)
-elif args.mode == "evaluate":
+elif args.mode == "evaluate-sample":
     iterator = data.get_new_iterator()
     progress = tf.keras.utils.Progbar(args.evaluate_sample_batch * args.batch_size)
     for b in range(args.evaluate_sample_batch):
@@ -60,23 +60,22 @@ elif args.mode == "evaluate":
         image, cond = iterator.get_next()
         noise = tf.random_normal([cond.shape[0], args.noise_dim])
         gen_image, save, adj_real_image, adj_fake_image = model.predict(noise, cond, image,
-                                                                        None, path.join(args.result_dir, "evaluate", "discriminator.json"), None)
+                                                                        None, path.join(args.result_dir, "evaluate", "disc", str(b) + ".json"), None)
         for i in range(args.batch_size):
             save_image(gen_image[i], path.join(args.result_dir, "evaluate", "gen", str(base_index + i) + ".jpg"))
             if adj_real_image is not None and adj_fake_image is not None:
                 save_image(adj_real_image[i], path.join(args.result_dir, "evaluate", "adj", "real_" + str(base_index + i) + ".jpg"))
                 save_image(adj_fake_image[i], path.join(args.result_dir, "evaluate", "adj", "fake_" + str(base_index + i) + ".jpg"))
         progress.add(args.batch_size)
-
+elif args.mode == "evaluate":
     if not args.gpu:
         args.gpu = [-1]
-
     gen_cmd = "python evaluate.py calc %s %s %s %s --gpu %s" % (
         path.join(args.result_dir, "evaluate", "gen"),
         path.join(args.test_data_dir, args.evaluate_pre_calculated),
         args.test_data_dir,
-        ",".join(map(str, args.gpu)),
-        path.join(args.result_dir, "evaluate", "fid-gen.log")
+        path.join(args.result_dir, "evaluate", "fid-gen.log"),
+        ",".join(map(str, args.gpu))
     )
 
     print("Running: \"", gen_cmd, "\"")
@@ -86,16 +85,16 @@ elif args.mode == "evaluate":
             path.join(args.result_dir, "evaluate", "adj"),
             path.join(args.test_data_dir, args.evaluate_pre_calculated),
             args.test_data_dir,
-            ",".join(map(str, args.gpu)),
-            path.join(args.result_dir, "evaluate", "fid-adj.log")
+            path.join(args.result_dir, "evaluate", "fid-adj.log"),
+            ",".join(map(str, args.gpu))
         )
         print("Running: \"", adj_cmd, "\"")
         system(adj_cmd)
 elif args.mode == "condition-sample":
     bar = tf.keras.utils.Progbar(args.condition_sample_batch)
     for i in range(1, 1 + args.condition_sample_batch):
-        cond = tf.keras.utils.to_categorical(range(args.cond_dim), args.cond_dim) * 0.88 + 0.04
-        noise = np.random.uniform(size=[1, args.noise_dim]).astype(np.float32)
+        cond = tf.keras.utils.to_categorical(range(args.cond_dim), args.cond_dim) * -0.96 + 0.98
+        noise = np.random.normal(size=[1, args.noise_dim]).astype(np.float32)
         noise = np.repeat(noise, args.cond_dim, 0)
         img = model.generator([noise, cond])
         # img2 = img[[x for x in range(7) if x % 7 in [0, 3, 4, 5]]]

@@ -219,7 +219,8 @@ class EagerTrainer:
             self.checkpoint.save(path.join(self.args.result_dir, "checkpoint", str(e)))
 
     def init_result_dir(self):
-        dirs = [".", "train/gen", "train/adj", "test/adj", "test/gen", "test/disc", "checkpoint", "log", "sample", "evaluate/gen", "evaluate/adj"]
+        dirs = [".", "train/gen", "train/adj", "test/adj", "test/gen", "test/disc", "checkpoint", "log", "sample", "evaluate/gen", "evaluate/adj",
+                "evaluate/disc"]
         for item in dirs:
             if not path.exists(path.join(self.args.result_dir, item)):
                 makedirs(path.join(self.args.result_dir, item))
