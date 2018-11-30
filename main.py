@@ -44,7 +44,7 @@ elif args.mode == "random-sample":
     now_time = int(time.time())
     for b in range(args.random_sample_batch):
         image, cond = iterator.get_next()
-        noise = tf.random_uniform([cond.shape[0], args.noise_dim])
+        noise = tf.random_normal([cond.shape[0], args.noise_dim])
 
         model.predict(noise, cond, image,
                       path.join(args.result_dir, "sample", "generator-%s-%d.jpg" % (now_time, b)),
@@ -58,7 +58,7 @@ elif args.mode == "evaluate":
     for b in range(args.evaluate_sample_batch):
         base_index = b * args.batch_size + 1
         image, cond = iterator.get_next()
-        noise = tf.random_uniform([cond.shape[0], args.noise_dim])
+        noise = tf.random_normal([cond.shape[0], args.noise_dim])
         gen_image, save, adj_real_image, adj_fake_image = model.predict(noise, cond, image,
                                                                         None, path.join(args.result_dir, "evaluate", "discriminator.json"), None)
         for i in range(args.batch_size):

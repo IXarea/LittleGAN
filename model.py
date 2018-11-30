@@ -60,6 +60,7 @@ class Discriminator(tf.keras.Model):
 
     @tf.contrib.eager.defun
     def call(self, inputs, training=None, mask=None):
+        # Todo: try to discriminate the feature map
         x = inputs
         encoder_layers = self.encoder(x)
         x = tf.layers.flatten(encoder_layers.pop())

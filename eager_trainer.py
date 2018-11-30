@@ -42,6 +42,7 @@ class EagerTrainer:
             "Discriminator": [range(0, 12), range(12, 16), range(16, 20)],
             "Adjuster": [range(16, 20), range(36, 38)]
         }
+        # weights可指kernel size/k/b等参数
         self.part_weights = {}
         for model in self.models:
             name = model.__class__.__name__
@@ -70,7 +71,7 @@ class EagerTrainer:
                 if None is iterator:
                     iterator = self.dataset.get_new_iterator()
                 self.test_image, self.test_cond = iterator.get_next()
-                self.test_noise = tf.random_uniform([self.test_cond.shape[0], self.args.noise_dim])
+                self.test_noise = tf.random_normal([self.test_cond.shape[0], self.args.noise_dim])
                 np.savez_compressed(npz_file, n=self.test_noise, c=self.test_cond, i=self.test_image)
 
     @staticmethod
@@ -97,7 +98,7 @@ class EagerTrainer:
     def gradient_penalty(real, fake, f):
         """
             with tf.GradientTape() as gp_tape:
-                alpha = tf.random_uniform(shape=[real.shape[0], 1, 1, 1])
+                alpha = tf.random_normal(shape=[real.shape[0], 1, 1, 1])
                 inter = real + alpha * (fake - real)
                 predict = f(inter)
             gradients = gp_tape.gradient(predict, f.weights)[0]
@@ -109,15 +110,20 @@ class EagerTrainer:
 
     def _get_train_weight(self, model, batch_no):
         name = model.__class__.__name__
+        # 如果用到partition and 批次数除以（partition间隔加一）的值为0
         if self.args.use_partition and batch_no % (self.args.partition_interval + 1) is 0:
             weights = self.part_weights[name]
+            # 【批次数整除（向下）（partition间隔加一）在除以每组的组数】=进行partition的组别编号
+            # 这里即第几组的权重
             return weights[(batch_no // (self.args.partition_interval + 1)) % weights.__len__()]
         else:
             return self.all_weights[name]
 
     def _train_step(self, batch_no, real_image, real_cond):
-        noise = tf.random_uniform([self.args.batch_size, self.args.noise_dim])
+        # Todo: use uniform distribution as noise will cause mode collaspe
+        noise = tf.random_normal([self.args.batch_size, self.args.noise_dim])
         with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
+            # Todo: combine training
             fake_image = self.generator([noise, real_cond])
             real_pr, real_c = self.discriminator(real_image)
             fake_pr, fake_c = self.discriminator(fake_image)
@@ -169,9 +175,9 @@ class EagerTrainer:
 
         global_step = tf.train.get_or_create_global_step()
 
-        for e in range(1, self.args.epoch):
-            progress_bar = tf.keras.utils.Progbar(self.dataset.batches * self.args.batch_size)
+        for e in range(1, self.args.epoch + 1):
             iterator = self.dataset.get_new_iterator()
+            progress_bar = tf.keras.utils.Progbar(self.dataset.batches * self.args.batch_size)
             for b in range(1, self.dataset.batches + 1):
                 try:
                     real_image, real_cond = iterator.get_next()
