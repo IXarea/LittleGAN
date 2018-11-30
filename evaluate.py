@@ -20,6 +20,7 @@ import numpy as np
 import fid
 from scipy.misc import imread
 import tensorflow as tf
+import datetime
 
 inception_path = fid.check_or_download_inception(args.model_path)
 
@@ -54,5 +55,5 @@ else:
 
     fid_value = fid.calculate_frechet_distance(mu_gen, sigma_gen, mu_real, sigma_real)
     print("FID: %s" % fid_value)
-    with open(args.output_file, "w") as f:
-        print(fid_value, file=f)
+    with open(args.output_file, "a") as f:
+        print("\n", datetime.datetime.now().isoformat(), fid_value, end="\n ", file=f)

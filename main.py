@@ -7,7 +7,7 @@ tf.enable_eager_execution()
 
 from os import path, system
 from dataset import CelebA
-from utils import save_image
+from utils import save_image, soft
 from model import Adjuster, Discriminator, Decoder, Encoder, Generator
 from eager_trainer import EagerTrainer
 from git import Repo
@@ -93,14 +93,22 @@ elif args.mode == "evaluate":
 elif args.mode == "condition-sample":
     bar = tf.keras.utils.Progbar(args.condition_sample_batch)
     for i in range(1, 1 + args.condition_sample_batch):
-        cond = tf.keras.utils.to_categorical(range(args.cond_dim), args.cond_dim) * -0.96 + 0.98
+        cond = soft(np.array([
+            [0., 0., 0., 0., 0., 1., 0.],
+            [0., 0., 0., 0., 0., 1., 1.],
+            [0., 0., 0., 0., 0., 0., 1.],
+            [1., 0., 0., 0., 0., 0., 1.],
+            [1., 0., 0., 0., 1., 0., 1.],
+            [1., 0., 1., 0., 1., 0., 1.],
+            [1., 1., 1., 0., 1., 0., 1.],
+            [1., 1., 1., 1., 1., 0., 1.]
+        ]))
         noise = np.random.normal(size=[1, args.noise_dim]).astype(np.float32)
         noise = np.repeat(noise, args.cond_dim, 0)
         img = model.generator([noise, cond])
         # img2 = img[[x for x in range(7) if x % 7 in [0, 3, 4, 5]]]
         save_image(img, path.join(args.result_dir, "sample", "condition-gen-%d.jpg" % i), (1, args.cond_dim))
         bar.add(1)
-
 
 else:
     print("没有此模式：", args.mode)

@@ -56,7 +56,7 @@ class EagerTrainer:
 
     def _init_graph(self):
         iterator, self.test_noise, self.test_cond, self.test_image = None, None, None, None
-        npz_file = path.join(self.args.test_data_dir, "test_data_" + str(self.args.batch_size) + ".npz")
+        npz_file = path.join(self.args.test_data_dir, "test_data_" + str(self.args.env) + ".npz")
         if path.isfile(npz_file):
             data = np.load(npz_file)
             self.test_noise, self.test_cond, self.test_image = data["n"], data["c"], data["i"]
