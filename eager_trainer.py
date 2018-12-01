@@ -1,132 +1,14 @@
-import tensorflow as tf
-from instance import InstanceNormalization
 from os import path, makedirs
 from utils import save_image, soft
 import json
 import shutil
 import numpy as np
 from git import Repo
+import tensorflow as tf
+import time
 
 
-class Encoder(tf.keras.Model):
-    def __init__(self, args):
-        """
-        :param Arg args:
-        """
-        super(Encoder, self).__init__()
-        self.args = args
-        for i in range(1, 5):
-            self.__setattr__("conv" + str(i), tf.layers.Conv2D(self.args.conv_filter[4 - i], self.args.kernel_size, 2, "same"))
-            self.__setattr__("norm" + str(i), InstanceNormalization())
-
-    def call(self, inputs, training=None, mask=None):
-        x = inputs
-        outputs = []
-        for i in range(1, 5):
-            x = self.__getattribute__("conv" + str(i))(x)
-            x = self.__getattribute__("norm" + str(i))(x)
-            x = tf.nn.leaky_relu(x, self.args.leaky_alpha)
-            x = tf.layers.dropout(x, self.args.dropout_rate)
-            outputs.append(x)
-        return outputs
-
-
-class Decoder(tf.keras.Model):
-    def __init__(self, args):
-        """
-        :param Arg args:
-        """
-        super(Decoder, self).__init__()
-        self.args = args
-        for i in range(1, 5):
-            self.__setattr__("conv" + str(i), tf.layers.Conv2DTranspose(self.args.conv_filter[i], self.args.kernel_size, (2, 2), "same"))
-            self.__setattr__("norm" + str(i), InstanceNormalization())
-
-    def call(self, inputs, training=None, mask=None):
-        x, add = inputs
-        for i in range(1, 5):
-            if add[i - 1] is not None:
-                x = tf.add(x, add[i - 1])
-            x = self.__getattribute__("conv" + str(i))(x)
-            x = self.__getattribute__("norm" + str(i))(x)
-            x = tf.nn.leaky_relu(x, self.args.leaky_alpha)
-        return x
-
-
-class Discriminator(tf.keras.Model):
-    def __init__(self, args, encoder):
-        """
-        :param Arg args:
-        """
-        super(Discriminator, self).__init__()
-        self.args = args
-        self.encoder = encoder
-        self.dense_pr = tf.layers.Dense(1, "sigmoid")
-        self.dense_cond = tf.layers.Dense(self.args.cond_dim, "sigmoid")
-
-    @tf.contrib.eager.defun
-    def call(self, inputs, training=None, mask=None):
-        x = inputs
-        encoder_layers = self.encoder(x)
-        x = tf.layers.flatten(encoder_layers.pop())
-        output_pr = self.dense_pr(x)
-        output_cond = self.dense_cond(x)
-        return output_pr, output_cond
-
-
-class Generator(tf.keras.Model):
-    def __init__(self, args, decoder):
-        """
-        :param Arg args:
-        """
-        super(Generator, self).__init__()
-        self.args = args
-        self.dense = tf.layers.Dense(self.args.init_dim ** 2 * self.args.conv_filter[0])
-        self.norm = InstanceNormalization()
-        self.decoder = decoder
-        self.conv = tf.layers.Conv2DTranspose(self.args.image_channel, self.args.kernel_size, strides=(1, 1), padding="same", activation="tanh")
-
-    @tf.contrib.eager.defun
-    def call(self, inputs, training=None, mask=None):
-        x = tf.concat(inputs, -1)
-        x = self.dense(x)
-        x = tf.nn.leaky_relu(x, self.args.leaky_alpha)
-        x = tf.reshape(x, [-1, self.args.init_dim, self.args.init_dim, self.args.conv_filter[0]])
-        x = self.norm(x)
-        x = self.decoder([x, [None] * 4])
-        output_image = self.conv(x)
-        return output_image
-
-
-class Adjuster(tf.keras.Model):
-    def __init__(self, args, encoder, decoder):
-        """
-        :param Arg args:
-        """
-        super(Adjuster, self).__init__()
-        self.args = args
-
-        self.encoder = encoder
-        self.dense = tf.layers.Dense(self.args.init_dim ** 2 * self.args.conv_filter[0])
-        self.norm = InstanceNormalization()
-        self.decoder = decoder
-        self.conv = tf.layers.Conv2DTranspose(self.args.image_channel, self.args.kernel_size, strides=(1, 1), padding="same", activation="tanh")
-
-    @tf.contrib.eager.defun
-    def call(self, inputs, training=None, mask=None):
-        image, cond = inputs
-        encoder_layers = self.encoder(image)
-        c = self.dense(cond)
-        c = tf.nn.leaky_relu(c, alpha=self.args.leaky_alpha)
-        c = self.norm(c)
-        c = tf.reshape(c, [-1, self.args.init_dim, self.args.init_dim, self.args.conv_filter[0]])
-        encoder_layers.reverse()
-        x = self.decoder([c, encoder_layers])
-        output_adj = self.conv(x)
-        return output_adj
-
-
-class Trainer:
+class EagerTrainer:
     def __init__(self, args, generator, discriminator, adjuster, dataset):
         """
         :param Arg args:
@@ -144,8 +26,8 @@ class Trainer:
         self.models = [self.discriminator, self.generator, self.adjuster]
 
         self._init_graph()
-        self.generator_optimizer = tf.train.AdamOptimizer(args.lr)
-        self.discriminator_optimizer = tf.train.AdamOptimizer(args.lr)
+        self.generator_optimizer = tf.train.AdamOptimizer(args.lr, args.beta_1, args.beta_2)
+        self.discriminator_optimizer = tf.train.AdamOptimizer(args.lr, args.beta_1, args.beta_2)
         self.adjuster_optimizer = tf.train.AdamOptimizer(args.lr)
         self.checkpoint = tf.train.Checkpoint(discriminator=self.discriminator, generator=self.generator, adjuster=self.adjuster,
                                               discriminator_optimizer=self.discriminator_optimizer, generator_optimizer=self.generator_optimizer,
@@ -161,6 +43,7 @@ class Trainer:
             "Discriminator": [range(0, 12), range(12, 16), range(16, 20)],
             "Adjuster": [range(16, 20), range(36, 38)]
         }
+        # weights可指kernel size/k/b等参数
         self.part_weights = {}
         for model in self.models:
             name = model.__class__.__name__
@@ -174,10 +57,10 @@ class Trainer:
 
     def _init_graph(self):
         iterator, self.test_noise, self.test_cond, self.test_image = None, None, None, None
-        if path.isfile("./test_data.npz"):
-            data = np.load("./test_data.npz")
+        npz_file = path.join(self.args.test_data_dir, "test_data_" + str(self.args.env) + ".npz")
+        if path.isfile(npz_file):
+            data = np.load(npz_file)
             self.test_noise, self.test_cond, self.test_image = data["n"], data["c"], data["i"]
-
         while True:
             try:
                 self.discriminator(self.test_image)
@@ -190,7 +73,7 @@ class Trainer:
                     iterator = self.dataset.get_new_iterator()
                 self.test_image, self.test_cond = iterator.get_next()
                 self.test_noise = tf.random_normal([self.test_cond.shape[0], self.args.noise_dim])
-                np.savez_compressed("./test_data.npz", n=self.test_noise, c=self.test_cond, i=self.test_image)
+                np.savez_compressed(npz_file, n=self.test_noise, c=self.test_cond, i=self.test_image)
 
     @staticmethod
     def discriminator_loss(real_true_c, real_predict_c, real_predict_pr, fake_predict_pr):
@@ -212,31 +95,22 @@ class Trainer:
                 + self.args.l1_lambda * tf.reduce_mean(tf.abs(image_ori - image_adj_real)))
         return real + fake
 
-    @staticmethod
-    def gradient_penalty(real, fake, f):
-        """
-            with tf.GradientTape() as gp_tape:
-                alpha = tf.random_uniform(shape=[real.shape[0], 1, 1, 1])
-                inter = real + alpha * (fake - real)
-                predict = f(inter)
-            gradients = gp_tape.gradient(predict, f.weights)[0]
-            slopes = tf.sqrt(tf.reduce_sum(tf.abs(gradients), reduction_indices=range(1, inter.shape.ndims)))
-            gp = tf.reduce_mean((slopes - 1.) ** 2)
-            return gp
-        """
-        raise NotImplementedError("GP didn't implemented on eager mode")
-
     def _get_train_weight(self, model, batch_no):
         name = model.__class__.__name__
+        # 如果用到partition and 批次数除以（partition间隔加一）的值为0
         if self.args.use_partition and batch_no % (self.args.partition_interval + 1) is 0:
             weights = self.part_weights[name]
+            # 【批次数整除（向下）（partition间隔加一）在除以每组的组数】=进行partition的组别编号
+            # 这里即第几组的权重
             return weights[(batch_no // (self.args.partition_interval + 1)) % weights.__len__()]
         else:
             return self.all_weights[name]
 
     def _train_step(self, batch_no, real_image, real_cond):
+        # Todo: use uniform distribution as noise will cause mode collaspe
         noise = tf.random_normal([self.args.batch_size, self.args.noise_dim])
         with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
+            # Todo: combine training
             fake_image = self.generator([noise, real_cond])
             real_pr, real_c = self.discriminator(real_image)
             fake_pr, fake_c = self.discriminator(fake_image)
@@ -246,8 +120,7 @@ class Trainer:
             if self.args.use_gp:
                 # todo: Is gp must use on cross-entropy
                 # todo: explore how to gp on eager mode
-                disc_gp = self.gradient_penalty(real_image, fake_image, self.discriminator)
-                disc_loss = -disc_loss + disc_gp * self.args.gp_weight
+                raise NotImplementedError("GP didn't implemented on eager mode")
 
         gradients_of_gen = gen_tape.gradient(gen_loss, self._get_train_weight(self.generator, batch_no))
         gradients_of_disc = disc_tape.gradient(disc_loss, self._get_train_weight(self.discriminator, batch_no))
@@ -288,9 +161,9 @@ class Trainer:
 
         global_step = tf.train.get_or_create_global_step()
 
-        for e in range(1, self.args.epoch):
-            progress_bar = tf.keras.utils.Progbar(self.dataset.batches * self.args.batch_size)
+        for e in range(1, self.args.epoch + 1):
             iterator = self.dataset.get_new_iterator()
+            progress_bar = tf.keras.utils.Progbar(self.dataset.batches * self.args.batch_size)
             for b in range(1, self.dataset.batches + 1):
                 try:
                     real_image, real_cond = iterator.get_next()
@@ -323,27 +196,17 @@ class Trainer:
                         adj_image = tf.concat(result[1:3], 0)
                         save_image(adj_image, path.join(self.args.result_dir, "train", "adj", "%d-%d.jpg" % (e, b)))
                 if b % self.args.freq_test is 0:
-                    gen_image = self.generator([self.test_noise, self.test_cond])
-                    save_image(gen_image, path.join(self.args.result_dir, "test", "gen", "%d-%d.jpg" % (e, b)))
-                    with open(path.join(self.args.result_dir, "test", "disc", "%d-%d.json" % (e, b)), "w") as f:
-                        save = dict()
-                        save["real_cond"] = self.test_cond
-                        save["real_pr"], save["real_c"] = self.discriminator(self.test_image)
-                        save["fake_pr"], save["fake_c"] = self.discriminator(gen_image)
-                        for x in save:
-                            save[x] = (tf.round(save[x] * 10)).numpy().astype(int).tolist()
-                        json.dump(save, f)
-
-                    if self.args.train_adj:
-                        adj_real_image = self.adjuster([self.test_image, self.test_cond])
-                        adj_fake_image = self.adjuster([gen_image, self.test_cond])
-                        adj_image = tf.concat([adj_real_image, adj_fake_image], 0)
-                        save_image(adj_image, path.join(self.args.result_dir, "test", "adj", "%d-%d.jpg" % (e, b)))
+                    self.predict(self.test_noise, self.test_cond, self.test_image,
+                                 path.join(self.args.result_dir, "test", "gen", "%d-%d.jpg" % (e, b)),
+                                 path.join(self.args.result_dir, "test", "disc", "%d-%d.json" % (e, b)),
+                                 path.join(self.args.result_dir, "test", "adj", "%d-%d.jpg" % (e, b))
+                                 )
 
             self.checkpoint.save(path.join(self.args.result_dir, "checkpoint", str(e)))
 
     def init_result_dir(self):
-        dirs = [".", "train/gen", "train/adj", "test/adj", "test/gen", "test/disc", "checkpoint", "log"]
+        dirs = [".", "train/gen", "train/adj", "test/adj", "test/gen", "test/disc", "checkpoint", "log", "sample", "evaluate/gen", "evaluate/adj",
+                "evaluate/disc"]
         for item in dirs:
             if not path.exists(path.join(self.args.result_dir, item)):
                 makedirs(path.join(self.args.result_dir, item))
@@ -369,3 +232,34 @@ class Trainer:
                 item.summary(print_fn=print_fn)
                 print_fn("\n")
                 tf.keras.utils.plot_model(item, to_file=path.join(self.args.result_dir, "image", "%s.png" % name), show_shapes=True)
+
+    def predict(self, noise, cond, image, gen_image_save_path=None, json_save_path=None, adj_image_save_path=None):
+        start_time = time.time()
+        gen_image = self.generator([noise, cond])
+        end_time = time.time()
+        print("Generate Time", end_time - start_time, "s")
+        if None is not gen_image_save_path:
+            save_image(gen_image, gen_image_save_path)
+
+        save = dict()
+        save["real_cond"] = cond
+        save["real_pr"], save["real_c"] = self.discriminator(image)
+        save["fake_pr"], save["fake_c"] = self.discriminator(gen_image)
+        save["real_pr_mse"] = tf.reduce_mean(tf.keras.metrics.mean_squared_error(soft(1), save["real_pr"]), axis=0).numpy().astype(float)
+        save["real_c_mse"] = tf.reduce_mean(tf.keras.metrics.mean_squared_error(cond, save["real_c"]), axis=0).numpy().astype(float)
+        save["fake_pr_mse"] = tf.reduce_mean(tf.keras.metrics.mean_squared_error(soft(0), save["fake_pr"]), axis=0).numpy().astype(float)
+        save["fake_c_mse"] = tf.reduce_mean(tf.keras.metrics.mean_squared_error(cond, save["fake_c"]), axis=0).numpy().astype(float)
+        for x in ["real_cond", "real_pr", "real_c", "fake_c", "fake_pr"]:
+            save[x] = (tf.round(save[x] * 100)).numpy().astype(int).tolist()
+        if None is not json_save_path:
+            with open(json_save_path, "w") as f:
+                json.dump(save, f)
+        adj_fake_image, adj_real_image = None, None
+        if self.args.train_adj:
+            adj_real_image = self.adjuster([image, cond])
+            adj_fake_image = self.adjuster([gen_image, cond])
+            adj_image = tf.concat([adj_real_image, adj_fake_image], 0)
+            if None is not adj_image_save_path:
+                save_image(adj_image, adj_image_save_path)
+
+        return gen_image, save, adj_real_image, adj_fake_image
