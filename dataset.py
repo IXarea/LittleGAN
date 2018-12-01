@@ -16,7 +16,7 @@ class CelebA:
                           "年轻人"]
         self.label = [self.all_label[x] for x in args.attr]
         dataset = tf.data.Dataset.from_tensor_slices((self._image_list, self._attributes_list))
-        dataset = dataset.apply(tf.data.experimental.map_and_batch(map_func=self._parse, batch_size=args.batch_size, num_parallel_calls=4))
+        dataset = dataset.apply(tf.data.experimental.map_and_batch(map_func=self._parse, batch_size=args.batch_size, num_parallel_calls=args.threads))
         dataset = dataset.shuffle(buffer_size=self.args.prefetch)
         self.dataset = dataset.prefetch(buffer_size=self.args.prefetch)
 

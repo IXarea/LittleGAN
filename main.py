@@ -53,8 +53,9 @@ elif args.mode == "random-sample":
         np.savez_compressed(path.join(args.result_dir, "sample", "input_data-%s-%d.npz" % (now_time, b)), n=noise, c=cond, i=image)
 elif args.mode == "evaluate-sample":
     iterator = data.get_new_iterator()
+    batches = np.ceil(args.evaluate_sample_size / args.batch_size).astype(int)
     progress = tf.keras.utils.Progbar(args.evaluate_sample_batch * args.batch_size)
-    for b in range(args.evaluate_sample_batch):
+    for b in range(batches):
         base_index = b * args.batch_size + 1
         image, cond = iterator.get_next()
         noise = tf.random_normal([cond.shape[0], args.noise_dim])
@@ -65,7 +66,7 @@ elif args.mode == "evaluate-sample":
             if adj_real_image is not None and adj_fake_image is not None:
                 save_image(adj_real_image[i], path.join(args.result_dir, "evaluate", "adj", "real_" + str(base_index + i) + ".jpg"))
                 save_image(adj_fake_image[i], path.join(args.result_dir, "evaluate", "adj", "fake_" + str(base_index + i) + ".jpg"))
-        progress.add(args.batch_size)
+        progress.add(1)
 elif args.mode == "evaluate":
     if not args.gpu:
         args.gpu = [-1]

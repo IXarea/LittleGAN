@@ -39,8 +39,9 @@
   "evaluate_pre_calculated": "fid_stats_celeba_128_all.npz",
   "random_sample_batch": 4,
   "condition_sample_batch": 100,
-  "evaluate_sample_batch": 50,
+  "evaluate_sample_size": 30000,
   "restore": true,
   "train_adj": true,
-  "prefetch": 320
+  "prefetch": 320,
+  "threads": 8
 }

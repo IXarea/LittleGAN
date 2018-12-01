@@ -34,7 +34,7 @@ class EagerTrainer:
                                               adjuster_optimizer=self.adjuster_optimizer)
         if path.isdir(path.join(self.args.result_dir, "checkpoint")) and self.args.restore:
             self.checkpoint.restore(tf.train.latest_checkpoint(path.join(self.args.result_dir, "checkpoint")))
-        self.init_result_dir()
+        self.init_dir()
         self.writer = tf.contrib.summary.create_file_writer(path.join(self.args.result_dir, "log"))
         self.writer.set_as_default()
 
@@ -58,7 +58,7 @@ class EagerTrainer:
     def _init_graph(self):
         iterator, self.test_noise, self.test_cond, self.test_image = None, None, None, None
         npz_file = path.join(self.args.test_data_dir, "test_data_" + str(self.args.env) + ".npz")
-        if path.isfile(npz_file):
+        if path.isfile(npz_file) and self.args.reuse:
             data = np.load(npz_file)
             self.test_noise, self.test_cond, self.test_image = data["n"], data["c"], data["i"]
         while True:
@@ -107,7 +107,7 @@ class EagerTrainer:
             return self.all_weights[name]
 
     def _train_step(self, batch_no, real_image, real_cond):
-        # Todo: use uniform distribution as noise will cause mode collaspe
+        # Todo: why use uniform distribution as noise will cause mode collapse
         noise = tf.random_normal([self.args.batch_size, self.args.noise_dim])
         with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
             # Todo: combine training
@@ -171,7 +171,7 @@ class EagerTrainer:
                     break
                 if real_cond.shape[0] != self.args.batch_size:
                     print("Skip one batch")
-                    break
+                    continue
                 result = self._train_step(b, real_image, real_cond)
                 losses = result[3:6]
                 global_step.assign_add(1)
@@ -204,7 +204,9 @@ class EagerTrainer:
 
             self.checkpoint.save(path.join(self.args.result_dir, "checkpoint", str(e)))
 
-    def init_result_dir(self):
+    def init_dir(self):
+        if not path.exists(self.args.test_data_dir):
+            makedirs(self.args.result_dir)
         dirs = [".", "train/gen", "train/adj", "test/adj", "test/gen", "test/disc", "checkpoint", "log", "sample", "evaluate/gen", "evaluate/adj",
                 "evaluate/disc"]
         for item in dirs:
