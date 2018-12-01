@@ -26,8 +26,8 @@ class EagerTrainer:
         self.models = [self.discriminator, self.generator, self.adjuster]
 
         self._init_graph()
-        self.generator_optimizer = tf.train.AdamOptimizer(args.lr)
-        self.discriminator_optimizer = tf.train.AdamOptimizer(args.lr)
+        self.generator_optimizer = tf.train.AdamOptimizer(args.lr, args.beta_1, args.beta_2)
+        self.discriminator_optimizer = tf.train.AdamOptimizer(args.lr, args.beta_1, args.beta_2)
         self.adjuster_optimizer = tf.train.AdamOptimizer(args.lr)
         self.checkpoint = tf.train.Checkpoint(discriminator=self.discriminator, generator=self.generator, adjuster=self.adjuster,
                                               discriminator_optimizer=self.discriminator_optimizer, generator_optimizer=self.generator_optimizer,
@@ -95,20 +95,6 @@ class EagerTrainer:
                 + self.args.l1_lambda * tf.reduce_mean(tf.abs(image_ori - image_adj_real)))
         return real + fake
 
-    @staticmethod
-    def gradient_penalty(real, fake, f):
-        """
-            with tf.GradientTape() as gp_tape:
-                alpha = tf.random_normal(shape=[real.shape[0], 1, 1, 1])
-                inter = real + alpha * (fake - real)
-                predict = f(inter)
-            gradients = gp_tape.gradient(predict, f.weights)[0]
-            slopes = tf.sqrt(tf.reduce_sum(tf.abs(gradients), reduction_indices=range(1, inter.shape.ndims)))
-            gp = tf.reduce_mean((slopes - 1.) ** 2)
-            return gp
-        """
-        raise NotImplementedError("GP didn't implemented on eager mode")
-
     def _get_train_weight(self, model, batch_no):
         name = model.__class__.__name__
         # 如果用到partition and 批次数除以（partition间隔加一）的值为0
@@ -134,8 +120,7 @@ class EagerTrainer:
             if self.args.use_gp:
                 # todo: Is gp must use on cross-entropy
                 # todo: explore how to gp on eager mode
-                disc_gp = self.gradient_penalty(real_image, fake_image, self.discriminator)
-                disc_loss = -disc_loss + disc_gp * self.args.gp_weight
+                raise NotImplementedError("GP didn't implemented on eager mode")
 
         gradients_of_gen = gen_tape.gradient(gen_loss, self._get_train_weight(self.generator, batch_no))
         gradients_of_disc = disc_tape.gradient(disc_loss, self._get_train_weight(self.discriminator, batch_no))
@@ -251,8 +236,8 @@ class EagerTrainer:
     def predict(self, noise, cond, image, gen_image_save_path=None, json_save_path=None, adj_image_save_path=None):
         start_time = time.time()
         gen_image = self.generator([noise, cond])
-        end_time=time.time()
-        print("Generate Time", end_time - start_time,"s")
+        end_time = time.time()
+        print("Generate Time", end_time - start_time, "s")
         if None is not gen_image_save_path:
             save_image(gen_image, gen_image_save_path)
 
