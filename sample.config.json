@@ -17,7 +17,13 @@
   "noise_dim": 93,
   "init_dim": 8,
   "norm": "instance",
-  "min_filter": 24,
+  "conv_filter": [
+    512,
+    384,
+    256,
+    128,
+    64
+  ],
   "kernel_size": 5,
   "leaky_alpha": 0.3,
   "dropout_rate": 0.5,

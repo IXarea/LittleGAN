@@ -35,7 +35,5 @@ class Arg:
         self.gpu = self.gpu.split(",")
         self.gpu = [int(item) for item in self.gpu if item.isnumeric() and int(item) >= 0]
 
-        self.conv_filter = [self.min_filter * 2 ** (4 - x) for x in range(5)]
-
     def __str__(self):
         return self.__dict__.__str__()
