@@ -33,6 +33,7 @@ class EagerTrainer:
                                               discriminator_optimizer=self.discriminator_optimizer, generator_optimizer=self.generator_optimizer,
                                               adjuster_optimizer=self.adjuster_optimizer)
         if path.isdir(path.join(self.args.result_dir, "checkpoint")) and self.args.restore:
+            print("Loading Checkpoint...")
             self.checkpoint.restore(tf.train.latest_checkpoint(path.join(self.args.result_dir, "checkpoint")))
         self.init_dir()
         self.writer = tf.contrib.summary.create_file_writer(path.join(self.args.result_dir, "log"))
@@ -68,7 +69,7 @@ class EagerTrainer:
                 self.adjuster([self.test_image, self.test_cond])
                 break
             except (tf.errors.InvalidArgumentError, AttributeError):
-                print("Test Data Error, Generating")
+                print("No reuse test data, generating")
                 if None is iterator:
                     iterator = self.dataset.get_new_iterator()
                 self.test_image, self.test_cond = iterator.get_next()
@@ -77,23 +78,21 @@ class EagerTrainer:
 
     @staticmethod
     def discriminator_loss(real_true_c, real_predict_c, real_predict_pr, fake_predict_pr):
-        return (tf.reduce_mean(tf.keras.losses.binary_crossentropy(real_true_c, real_predict_c)) * 2
-                + tf.reduce_mean(tf.keras.losses.binary_crossentropy(soft(tf.ones(real_predict_pr.shape)), real_predict_pr))
-                + tf.reduce_mean(tf.keras.losses.binary_crossentropy(soft(tf.zeros(fake_predict_pr.shape)), fake_predict_pr)))
+        return tf.reduce_mean(tf.keras.losses.binary_crossentropy(real_true_c, real_predict_c)) * 2 \
+               + tf.reduce_mean(tf.keras.losses.binary_crossentropy(soft(tf.ones(real_predict_pr.shape)), real_predict_pr)) \
+               + tf.reduce_mean(tf.keras.losses.binary_crossentropy(soft(tf.zeros(fake_predict_pr.shape)), fake_predict_pr))
 
     def generator_loss(self, cond_ori, cond_disc, pr_disc, image_ori, image_gen):
-        return (tf.reduce_mean(tf.keras.losses.binary_crossentropy(soft(tf.ones(pr_disc.shape)), pr_disc))
-                + tf.reduce_mean(tf.keras.losses.binary_crossentropy(cond_ori, cond_disc))
-                + self.args.l1_lambda * tf.reduce_mean(tf.abs(image_ori - image_gen)))
+        return tf.reduce_mean(tf.keras.losses.binary_crossentropy(soft(tf.ones(pr_disc.shape)), pr_disc)) \
+               + tf.reduce_mean(tf.keras.losses.binary_crossentropy(cond_ori, cond_disc)) \
+               + self.args.l1_lambda * tf.reduce_mean(tf.abs(image_ori - image_gen))
 
-    def adjuster_loss(self, cond_ori, cond_disc_real, pr_disc_real, cond_disc_fake, pr_disc_fake, image_ori, image_adj_real, image_adj_fake):
-        fake = (tf.reduce_mean(tf.keras.losses.binary_crossentropy(soft(tf.ones(pr_disc_fake.shape)), pr_disc_fake))
-                + tf.reduce_mean(tf.keras.losses.binary_crossentropy(cond_ori, cond_disc_fake))
-                + self.args.l1_lambda * tf.reduce_mean(tf.abs(image_ori - image_adj_fake)))
-        real = (tf.reduce_mean(tf.keras.losses.binary_crossentropy(soft(tf.ones(pr_disc_real.shape)), pr_disc_real))
-                + tf.reduce_mean(tf.keras.losses.binary_crossentropy(cond_ori, cond_disc_real))
-                + self.args.l1_lambda * tf.reduce_mean(tf.abs(image_ori - image_adj_real)))
-        return real + fake
+    def adjuster_loss(self, cond_ori, cond_disc, pr_disc, image_ori, image_adj):
+        cond2 = tf.concat([cond_ori, cond_ori], axis=0)
+        image2 = tf.concat([image_ori, image_ori], axis=0)
+        return tf.reduce_mean(tf.keras.losses.binary_crossentropy(soft(tf.ones(pr_disc.shape)), pr_disc)) \
+               + tf.reduce_mean(tf.keras.losses.binary_crossentropy(cond2, cond_disc)) \
+               + self.args.l1_lambda * tf.reduce_mean(tf.abs(image2 - image_adj))
 
     def _get_train_weight(self, model, batch_no):
         name = model.__class__.__name__
@@ -110,7 +109,6 @@ class EagerTrainer:
         # Todo: why use uniform distribution as noise will cause mode collapse
         noise = tf.random_normal([self.args.batch_size, self.args.noise_dim])
         with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
-            # Todo: combine training
             fake_image = self.generator([noise, real_cond])
             real_pr, real_c = self.discriminator(real_image)
             fake_pr, fake_c = self.discriminator(fake_image)
@@ -136,10 +134,9 @@ class EagerTrainer:
             with tf.GradientTape() as adj_tape:
                 adj_real_image = self.adjuster([real_image, real_cond])
                 adj_fake_image = self.adjuster([fake_image, real_cond])
-                adj_fake_pr, adj_fake_c = self.discriminator(adj_fake_image)
-                adj_real_pr, adj_real_c = self.discriminator(adj_real_image)
-
-                adj_loss = self.adjuster_loss(real_cond, adj_real_c, adj_real_pr, adj_fake_c, adj_fake_pr, real_image, adj_real_image, adj_fake_image)
+                adj_image = tf.concat([adj_real_image, adj_fake_image], axis=0)
+                adj_pr, adj_c = self.discriminator(adj_image)
+                adj_loss = self.adjuster_loss(real_cond, adj_c, adj_pr, real_image, adj_image)
             gradients_of_adj = adj_tape.gradient(adj_loss, adj_weight)
             self.adjuster_optimizer.apply_gradients(zip(gradients_of_adj, adj_weight))
 
@@ -162,8 +159,10 @@ class EagerTrainer:
         global_step = tf.train.get_or_create_global_step()
 
         for e in range(1, self.args.epoch + 1):
+            print("Exp:", self.args.exp_name, "Epoch:", e, "Starting...")
             iterator = self.dataset.get_new_iterator()
             progress_bar = tf.keras.utils.Progbar(self.dataset.batches * self.args.batch_size)
+            start_time = time.time()
             for b in range(1, self.dataset.batches + 1):
                 try:
                     real_image, real_cond = iterator.get_next()
@@ -201,7 +200,8 @@ class EagerTrainer:
                                  path.join(self.args.result_dir, "test", "disc", "%d-%d.json" % (e, b)),
                                  path.join(self.args.result_dir, "test", "adj", "%d-%d.jpg" % (e, b))
                                  )
-
+            end_time = time.time()
+            print("Time usage:", start_time - end_time, "s")
             self.checkpoint.save(path.join(self.args.result_dir, "checkpoint", str(e)))
 
     def init_dir(self):
