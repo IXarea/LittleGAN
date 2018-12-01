@@ -18,27 +18,27 @@ class EagerTrainer:
         :param CelebA dataset:
         """
         self.args = args
-
+        print(" - Initializing Trainer(Executor)...")
         self.dataset = dataset
         self.adjuster = adjuster
         self.discriminator = discriminator
         self.generator = generator
         self.models = [self.discriminator, self.generator, self.adjuster]
-
+        self._init_dir()
         self._init_graph()
         self.generator_optimizer = tf.train.AdamOptimizer(args.lr, args.beta_1, args.beta_2)
         self.discriminator_optimizer = tf.train.AdamOptimizer(args.lr, args.beta_1, args.beta_2)
         self.adjuster_optimizer = tf.train.AdamOptimizer(args.lr)
-        self.model_checkpoint = tf.train.Checkpoint(discriminator=self.discriminator, generator=self.generator, adjuster=self.adjuster)
-        self.optimizer_checkpoint = tf.train.Checkpoint(discriminator_optimizer=self.discriminator_optimizer, generator_optimizer=self.generator_optimizer,
-                                                        adjuster_optimizer=self.adjuster_optimizer)
-        if path.isdir(path.join(self.args.result_dir, "checkpoint", "model")) and self.args.restore:
-            print("Loading Model Checkpoint...")
-            self.model_checkpoint.restore(tf.train.latest_checkpoint(path.join(self.args.result_dir, "checkpoint", "model")))
-        if path.isdir(path.join(self.args.result_dir, "checkpoint", "optimizer")) and self.args.restore:
-            print("Loading Optimizer Checkpoint...")
-            self.model_checkpoint.restore(tf.train.latest_checkpoint(path.join(self.args.result_dir, "checkpoint", "optimizer")))
-        self.init_dir()
+        self.checkpoint = tf.train.Checkpoint(discriminator=self.discriminator, generator=self.generator, adjuster=self.adjuster,
+                                              discriminator_optimizer=self.discriminator_optimizer, generator_optimizer=self.generator_optimizer,
+                                              adjuster_optimizer=self.adjuster_optimizer)
+        if path.isfile(path.join(self.args.result_dir, "checkpoint", "checkpoint")) and self.args.restore:
+            print("Loading Checkpoint...")
+            self.checkpoint.restore(tf.train.latest_checkpoint(path.join(self.args.result_dir, "checkpoint")))
+            with open(path.join(self.args.result_dir, "checkpoint", "status.json")) as f:
+                status = json.load(f)
+            self.global_epoch = status["epoch"]
+
         self.writer = tf.contrib.summary.create_file_writer(path.join(self.args.result_dir, "log"))
         self.writer.set_as_default()
 
@@ -58,6 +58,7 @@ class EagerTrainer:
             "Discriminator": self.discriminator.weights,
             "Adjuster": [self.adjuster.weights[w] for w in range(16, 20)]
         }
+        self.global_epoch = 1
 
     def _init_graph(self):
         iterator, self.test_noise, self.test_cond, self.test_image = None, None, None, None
@@ -91,11 +92,9 @@ class EagerTrainer:
                + self.args.l1_lambda * tf.reduce_mean(tf.abs(image_ori - image_gen))
 
     def adjuster_loss(self, cond_ori, cond_disc, pr_disc, image_ori, image_adj):
-        cond2 = tf.concat([cond_ori, cond_ori], axis=0)
-        image2 = tf.concat([image_ori, image_ori], axis=0)
         return tf.reduce_mean(tf.keras.losses.binary_crossentropy(soft(tf.ones(pr_disc.shape)), pr_disc)) \
-               + tf.reduce_mean(tf.keras.losses.binary_crossentropy(cond2, cond_disc)) \
-               + self.args.l1_lambda * tf.reduce_mean(tf.abs(image2 - image_adj))
+               + tf.reduce_mean(tf.keras.losses.binary_crossentropy(cond_ori, cond_disc)) \
+               + self.args.l1_lambda * tf.reduce_mean(tf.abs(tf.concat([image_ori] * 2, axis=0) - image_adj))
 
     def _get_train_weight(self, model, batch_no):
         name = model.__class__.__name__
@@ -135,21 +134,21 @@ class EagerTrainer:
             adj_weight = self._get_train_weight(self.adjuster, batch_no)
 
             with tf.GradientTape() as adj_tape:
-                adj_real_image = self.adjuster([real_image, real_cond])
-                adj_fake_image = self.adjuster([fake_image, real_cond])
-                adj_image = tf.concat([adj_real_image, adj_fake_image], axis=0)
+                adj_all_cond = tf.concat([real_cond] * 2, axis=0)
+                adj_image = self.adjuster([tf.concat([real_image, fake_image], axis=0), adj_all_cond])
                 adj_pr, adj_c = self.discriminator(adj_image)
-                adj_loss = self.adjuster_loss(real_cond, adj_c, adj_pr, real_image, adj_image)
+                adj_loss = self.adjuster_loss(adj_all_cond, adj_c, adj_pr, real_image, adj_image)
             gradients_of_adj = adj_tape.gradient(adj_loss, adj_weight)
             self.adjuster_optimizer.apply_gradients(zip(gradients_of_adj, adj_weight))
 
-            return fake_image, adj_real_image, adj_fake_image, gen_loss, disc_loss, adj_loss
+            return fake_image, adj_image, gen_loss, disc_loss, adj_loss
 
-        return fake_image, None, None, gen_loss, disc_loss, None
+        return fake_image, None, gen_loss, disc_loss, None
 
-    def interrupted(self, signum, f_name):
-        self.model_checkpoint.save(path.join(self.args.result_dir, "checkpoint", "model", "interrupt"))
-        self.optimizer_checkpoint.save(path.join(self.args.result_dir, "checkpoint", "optimizer", "interrupt"))
+    def _interrupted(self, signum, f_name):
+        self.checkpoint.save(path.join(self.args.result_dir, "checkpoint", "interrupt"))
+        with open(path.join(self.args.result_dir, "checkpoint", "status.json"), "w") as f:
+            json.dump({"epoch": self.global_epoch}, f)
         print("\n Checkpoint has been saved")
         print(signum, f_name)
         import sys
@@ -158,12 +157,13 @@ class EagerTrainer:
     def train(self):
         loss_label = ["LossG", "LossD", "LossA"]
         import signal
-        signal.signal(signal.SIGINT, self.interrupted)
+        signal.signal(signal.SIGINT, self._interrupted)
 
         global_step = tf.train.get_or_create_global_step()
 
-        for e in range(1, self.args.epoch + 1):
+        for e in range(self.global_epoch, self.args.epoch + 1):
             print("Experiment:", self.args.exp_name, "Epoch:", e, "Starting...")
+            self.global_epoch = e
             iterator = self.dataset.get_new_iterator()
             progress_bar = tf.keras.utils.Progbar(self.dataset.batches * self.args.batch_size)
             start_time = time.time()
@@ -176,7 +176,7 @@ class EagerTrainer:
                     print("Skip one batch")
                     continue
                 result = self._train_step(b, real_image, real_cond)
-                losses = result[3:6]
+                losses = result[2:5]
                 global_step.assign_add(1)
                 with tf.contrib.summary.always_record_summaries():
                     tf.contrib.summary.scalar('loss/gen', losses[0])
@@ -194,10 +194,8 @@ class EagerTrainer:
                 if b % self.args.freq_gen is 0:
                     gen_image = result[0]
                     save_image(gen_image, path.join(self.args.result_dir, "train", "gen", "%d-%d.jpg" % (e, b)))
-
-                    if result[1] is not None and result[2] is not None:
-                        adj_image = tf.concat(result[1:3], 0)
-                        save_image(adj_image, path.join(self.args.result_dir, "train", "adj", "%d-%d.jpg" % (e, b)))
+                    if result[1] is not None:
+                        save_image(result[1], path.join(self.args.result_dir, "train", "adj", "%d-%d.jpg" % (e, b)))
                 if b % self.args.freq_test is 0:
                     self.predict(self.test_noise, self.test_cond, self.test_image,
                                  path.join(self.args.result_dir, "test", "gen", "%d-%d.jpg" % (e, b)),
@@ -206,18 +204,18 @@ class EagerTrainer:
                                  )
             end_time = time.time()
             print("Time usage:", start_time - end_time, "s")
-            self.model_checkpoint.save(path.join(self.args.result_dir, "checkpoint", "model", str(e)))
-            self.optimizer_checkpoint.save(path.join(self.args.result_dir, "checkpoint", "optimizer", str(e)))
+            self.checkpoint.save(path.join(self.args.result_dir, "checkpoint", str(e)))
 
-    def init_dir(self):
+    def _init_dir(self):
         if not path.exists(self.args.test_data_dir):
             makedirs(self.args.result_dir)
-        dirs = [".", "train/gen", "train/adj", "test/adj", "test/gen", "test/disc", "checkpoint/model", "checkpoint/optimizer", "log", "sample", "evaluate/gen",
-                "evaluate/adj", "evaluate/disc"]
+        dirs = [".", "train/gen", "train/adj", "test/adj", "test/gen", "test/disc", "checkpoint", "log", "sample", "evaluate/gen", "evaluate/adj",
+                "evaluate/disc"]
         for item in dirs:
             if not path.exists(path.join(self.args.result_dir, item)):
                 makedirs(path.join(self.args.result_dir, item))
-        shutil.copyfile(self.args.env_file, path.join(self.args.result_dir, "config.json"))
+        with open(path.join(self.args.result_dir, "config.json"), "w") as f:
+            json.dump(self.args.__dict__, f)
         if not self.args.debug:
             repo = Repo(".")
             with open(path.join(self.args.result_dir, "code.tar"), "wb") as f:
@@ -238,7 +236,7 @@ class EagerTrainer:
                 print_fn("=" * pad_len + "   Model: " + name + "  " + "=" * pad_len)
                 item.summary(print_fn=print_fn)
                 print_fn("\n")
-                tf.keras.utils.plot_model(item, to_file=path.join(self.args.result_dir, "image", "%s.png" % name), show_shapes=True)
+                tf.keras.utils.plot_model(item, to_file=path.join(self.args.result_dir, "%s.png" % name), show_shapes=True)
 
     def predict(self, noise, cond, image, gen_image_save_path=None, json_save_path=None, adj_image_save_path=None):
         start_time = time.time()

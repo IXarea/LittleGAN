@@ -6,6 +6,7 @@ from argparse import ArgumentParser
 class Arg:
 
     def __init__(self):
+        print(" - Initializing Application...")
         parser = ArgumentParser(prog="LittleGAN", description="The code for paper: LittleGAN")
 
         parser.add_argument("mode", type=str, help="run mode", default="train",
