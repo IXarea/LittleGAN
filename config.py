@@ -14,7 +14,6 @@ class Arg:
         parser.add_argument("-e", "--env", type=str, help="config environment", default="sample")
         parser.add_argument("-g", "--gpu", type=str, required=False, help="gpu ids, eg: 0,1,2,3", default="-1")
         parser.add_argument("--debug", help="use debug mode, ignore git repo is dirty", action="store_true")
-        parser.add_argument("--reuse", action="store_true")
         args = parser.parse_args()
         sample_env = "sample.config.json"
         with open(sample_env) as f:

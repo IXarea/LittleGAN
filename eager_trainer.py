@@ -29,12 +29,15 @@ class EagerTrainer:
         self.generator_optimizer = tf.train.AdamOptimizer(args.lr, args.beta_1, args.beta_2)
         self.discriminator_optimizer = tf.train.AdamOptimizer(args.lr, args.beta_1, args.beta_2)
         self.adjuster_optimizer = tf.train.AdamOptimizer(args.lr)
-        self.checkpoint = tf.train.Checkpoint(discriminator=self.discriminator, generator=self.generator, adjuster=self.adjuster,
-                                              discriminator_optimizer=self.discriminator_optimizer, generator_optimizer=self.generator_optimizer,
-                                              adjuster_optimizer=self.adjuster_optimizer)
-        if path.isdir(path.join(self.args.result_dir, "checkpoint")) and self.args.restore:
-            print("Loading Checkpoint...")
-            self.checkpoint.restore(tf.train.latest_checkpoint(path.join(self.args.result_dir, "checkpoint")))
+        self.model_checkpoint = tf.train.Checkpoint(discriminator=self.discriminator, generator=self.generator, adjuster=self.adjuster)
+        self.optimizer_checkpoint = tf.train.Checkpoint(discriminator_optimizer=self.discriminator_optimizer, generator_optimizer=self.generator_optimizer,
+                                                        adjuster_optimizer=self.adjuster_optimizer)
+        if path.isdir(path.join(self.args.result_dir, "checkpoint", "model")) and self.args.restore:
+            print("Loading Model Checkpoint...")
+            self.model_checkpoint.restore(tf.train.latest_checkpoint(path.join(self.args.result_dir, "checkpoint", "model")))
+        if path.isdir(path.join(self.args.result_dir, "checkpoint", "optimizer")) and self.args.restore:
+            print("Loading Optimizer Checkpoint...")
+            self.model_checkpoint.restore(tf.train.latest_checkpoint(path.join(self.args.result_dir, "checkpoint", "optimizer")))
         self.init_dir()
         self.writer = tf.contrib.summary.create_file_writer(path.join(self.args.result_dir, "log"))
         self.writer.set_as_default()
@@ -69,7 +72,7 @@ class EagerTrainer:
                 self.adjuster([self.test_image, self.test_cond])
                 break
             except (tf.errors.InvalidArgumentError, AttributeError):
-                print("No reuse test data, generating")
+                print("No reuse test data, generating...")
                 if None is iterator:
                     iterator = self.dataset.get_new_iterator()
                 self.test_image, self.test_cond = iterator.get_next()
@@ -145,7 +148,8 @@ class EagerTrainer:
         return fake_image, None, None, gen_loss, disc_loss, None
 
     def interrupted(self, signum, f_name):
-        self.checkpoint.save(path.join(self.args.result_dir, "checkpoint", "interrupt"))
+        self.model_checkpoint.save(path.join(self.args.result_dir, "checkpoint", "model", "interrupt"))
+        self.optimizer_checkpoint.save(path.join(self.args.result_dir, "checkpoint", "optimizer", "interrupt"))
         print("\n Checkpoint has been saved")
         print(signum, f_name)
         import sys
@@ -159,7 +163,7 @@ class EagerTrainer:
         global_step = tf.train.get_or_create_global_step()
 
         for e in range(1, self.args.epoch + 1):
-            print("Exp:", self.args.exp_name, "Epoch:", e, "Starting...")
+            print("Experiment:", self.args.exp_name, "Epoch:", e, "Starting...")
             iterator = self.dataset.get_new_iterator()
             progress_bar = tf.keras.utils.Progbar(self.dataset.batches * self.args.batch_size)
             start_time = time.time()
@@ -202,13 +206,14 @@ class EagerTrainer:
                                  )
             end_time = time.time()
             print("Time usage:", start_time - end_time, "s")
-            self.checkpoint.save(path.join(self.args.result_dir, "checkpoint", str(e)))
+            self.model_checkpoint.save(path.join(self.args.result_dir, "checkpoint", "model", str(e)))
+            self.optimizer_checkpoint.save(path.join(self.args.result_dir, "checkpoint", "optimizer", str(e)))
 
     def init_dir(self):
         if not path.exists(self.args.test_data_dir):
             makedirs(self.args.result_dir)
-        dirs = [".", "train/gen", "train/adj", "test/adj", "test/gen", "test/disc", "checkpoint", "log", "sample", "evaluate/gen", "evaluate/adj",
-                "evaluate/disc"]
+        dirs = [".", "train/gen", "train/adj", "test/adj", "test/gen", "test/disc", "checkpoint/model", "checkpoint/optimizer", "log", "sample", "evaluate/gen",
+                "evaluate/adj", "evaluate/disc"]
         for item in dirs:
             if not path.exists(path.join(self.args.result_dir, item)):
                 makedirs(path.join(self.args.result_dir, item))
