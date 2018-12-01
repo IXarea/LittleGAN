@@ -5,6 +5,7 @@ import shutil
 import numpy as np
 from git import Repo
 import tensorflow as tf
+import time
 
 
 class EagerTrainer:
@@ -248,7 +249,10 @@ class EagerTrainer:
                 tf.keras.utils.plot_model(item, to_file=path.join(self.args.result_dir, "image", "%s.png" % name), show_shapes=True)
 
     def predict(self, noise, cond, image, gen_image_save_path=None, json_save_path=None, adj_image_save_path=None):
+        start_time = time.time()
         gen_image = self.generator([noise, cond])
+        end_time=time.time()
+        print("Generate Time", end_time - start_time,"s")
         if None is not gen_image_save_path:
             save_image(gen_image, gen_image_save_path)
 

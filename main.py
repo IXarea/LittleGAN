@@ -45,7 +45,6 @@ elif args.mode == "random-sample":
     for b in range(args.random_sample_batch):
         image, cond = iterator.get_next()
         noise = tf.random_normal([cond.shape[0], args.noise_dim])
-
         model.predict(noise, cond, image,
                       path.join(args.result_dir, "sample", "generator-%s-%d.jpg" % (now_time, b)),
                       path.join(args.result_dir, "sample", "discriminator-%s-%d.json" % (now_time, b)),
@@ -102,12 +101,12 @@ elif args.mode == "condition-sample":
             [1., 0., 1., 0., 1., 0., 1.],
             [1., 1., 1., 0., 1., 0., 1.],
             [1., 1., 1., 1., 1., 0., 1.]
-        ]))
-        noise = np.random.normal(size=[1, args.noise_dim]).astype(np.float32)
-        noise = np.repeat(noise, args.cond_dim, 0)
+        ])).astype(np.float32)
+        noise = np.random.normal(size=[1, args.noise_dim])
+        noise = np.repeat(noise, 8, 0).astype(np.float32)
         img = model.generator([noise, cond])
         # img2 = img[[x for x in range(7) if x % 7 in [0, 3, 4, 5]]]
-        save_image(img, path.join(args.result_dir, "sample", "condition-gen-%d.jpg" % i), (1, args.cond_dim))
+        save_image(img, path.join(args.result_dir, "sample", "condition-gen-%d.jpg" % i), (1, 8))
         bar.add(1)
 
 else:
