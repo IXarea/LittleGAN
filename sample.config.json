@@ -18,11 +18,11 @@
   "init_dim": 8,
   "norm": "instance",
   "conv_filter": [
-    512,
     384,
     256,
     128,
-    64
+    64,
+    32
   ],
   "kernel_size": 5,
   "leaky_alpha": 0.3,

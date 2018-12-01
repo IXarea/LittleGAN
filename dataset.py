@@ -6,6 +6,7 @@ from os import path
 
 class CelebA:
     def __init__(self, args):
+        print(" - Initializing Dataset...")
         self.args = args
         self._image_list = glob(path.join(args.image_path, "*." + args.image_ext))
         self._attributes_list = self._get_attr_list(args.attr_path, args.attr)

@@ -14,32 +14,36 @@ from git import Repo
 import time
 import numpy as np
 
+print("Application Params: ", args)
+print("Using GPU(s): ", args.gpu)
+print("Running Mode:", args.mode)
+print(" - Initializing Networks...")
 decoder = Decoder(args)
 encoder = Encoder(args)
 generator = Generator(args, decoder)
 discriminator = Discriminator(args, encoder)
 adjuster = Adjuster(args, encoder, decoder)
 
-print("Application Params: ", args, "\r\n")
-print("Using GPUs: ", args.gpu)
-if args.mode != "evaluate":
-    data = CelebA(args)
-    print("\r\nImage Flows From: ", args.image_path, "   Image Count: ", args.batch_size * data.batches)
-    print("\r\nUsing Attribute: ", data.label)
-
-    model = EagerTrainer(args, generator, discriminator, adjuster, data)
-
 if args.mode == "train":
     repo = Repo(".")
     if repo.is_dirty() and not args.debug:  # 程序被修改且不是测试模式
         raise EnvironmentError("Git repo is Dirty! Please train after committed.")
+    data = CelebA(args)
+    print("Using Attribute:", data.label)
+    model = EagerTrainer(args, generator, discriminator, adjuster, data)
     model.train()
 elif args.mode == "visual":  # loss etc的可视化
     print("The result path is ", path.join(args.result_dir, "log"))
     system("tensorboard --host 0.0.0.0 --logdir " + path.join(args.result_dir, "log"))
 elif args.mode == "plot":
+    args.reuse = True
+    model = EagerTrainer(args, generator, discriminator, adjuster, None)
     model.plot()  # 输出模型结构图
 elif args.mode == "random-sample":
+    args.reuse = True
+    data = CelebA(args)
+    print("Using Attribute:", data.label)
+    model = EagerTrainer(args, generator, discriminator, adjuster, data)
     iterator = data.get_new_iterator()
     now_time = int(time.time())
     for b in range(args.random_sample_batch):
@@ -52,6 +56,10 @@ elif args.mode == "random-sample":
                       )
         np.savez_compressed(path.join(args.result_dir, "sample", "input_data-%s-%d.npz" % (now_time, b)), n=noise, c=cond, i=image)
 elif args.mode == "evaluate-sample":
+    args.reuse = True
+    data = CelebA(args)
+    print("Using Attribute:", data.label)
+    model = EagerTrainer(args, generator, discriminator, adjuster, data)
     iterator = data.get_new_iterator()
     batches = np.ceil(args.evaluate_sample_size / args.batch_size).astype(int)
     progress = tf.keras.utils.Progbar(args.evaluate_sample_batch * args.batch_size)
@@ -78,7 +86,7 @@ elif args.mode == "evaluate":
         ",".join(map(str, args.gpu))
     )
 
-    print("Running: \"", gen_cmd, "\"")
+    print("Running: \"" + gen_cmd + "\"")
     system(gen_cmd)
     if args.train_adj:
         adj_cmd = "python evaluate.py calc %s %s %s %s --gpu %s" % (
@@ -88,9 +96,10 @@ elif args.mode == "evaluate":
             path.join(args.result_dir, "evaluate", "fid-adj.log"),
             ",".join(map(str, args.gpu))
         )
-        print("Running: \"", adj_cmd, "\"")
+        print("Running: \"" + adj_cmd + "\"")
         system(adj_cmd)
 elif args.mode == "condition-sample":
+    model = EagerTrainer(args, generator, discriminator, adjuster, None)
     bar = tf.keras.utils.Progbar(args.condition_sample_batch)
     for i in range(1, 1 + args.condition_sample_batch):
         cond = soft(np.array([
