@@ -45,7 +45,7 @@ class EagerTrainer:
         self.part_groups = {
             "Generator": [range(0, 4), range(4, 8), range(8, 22)],
             "Discriminator": [range(0, 12), range(12, 16), range(16, 20)],
-            "Adjuster": [range(16, 20), range(36, 38)]
+            "Adjuster": [range(16, 20)]
         }
         # weights可指kernel size/k/b等参数
         self.part_weights = {}
@@ -56,7 +56,7 @@ class EagerTrainer:
         self.all_weights = {
             "Generator": self.generator.weights,
             "Discriminator": self.discriminator.weights,
-            "Adjuster": [self.adjuster.weights[w] for w in [16, 17, 18, 19, 36, 37]]
+            "Adjuster": [self.adjuster.weights[w] for w in range(16, 20)]
         }
 
     def _init_graph(self):
