@@ -91,11 +91,9 @@ class EagerTrainer:
                + self.args.l1_lambda * tf.reduce_mean(tf.abs(image_ori - image_gen))
 
     def adjuster_loss(self, cond_ori, cond_disc, pr_disc, image_ori, image_adj):
-        cond2 = tf.concat([cond_ori, cond_ori], axis=0)
-        image2 = tf.concat([image_ori, image_ori], axis=0)
         return tf.reduce_mean(tf.keras.losses.binary_crossentropy(soft(tf.ones(pr_disc.shape)), pr_disc)) \
-               + tf.reduce_mean(tf.keras.losses.binary_crossentropy(cond2, cond_disc)) \
-               + self.args.l1_lambda * tf.reduce_mean(tf.abs(image2 - image_adj))
+               + tf.reduce_mean(tf.keras.losses.binary_crossentropy(cond_ori, cond_disc)) \
+               + self.args.l1_lambda * tf.reduce_mean(tf.abs(tf.concat([image_ori] * 2, axis=0) - image_adj))
 
     def _get_train_weight(self, model, batch_no):
         name = model.__class__.__name__
@@ -135,17 +133,16 @@ class EagerTrainer:
             adj_weight = self._get_train_weight(self.adjuster, batch_no)
 
             with tf.GradientTape() as adj_tape:
-                adj_real_image = self.adjuster([real_image, real_cond])
-                adj_fake_image = self.adjuster([fake_image, real_cond])
-                adj_image = tf.concat([adj_real_image, adj_fake_image], axis=0)
+                adj_all_cond = tf.concat([real_cond] * 2, axis=0)
+                adj_image = self.adjuster([tf.concat([real_image, fake_image], axis=0), adj_all_cond])
                 adj_pr, adj_c = self.discriminator(adj_image)
-                adj_loss = self.adjuster_loss(real_cond, adj_c, adj_pr, real_image, adj_image)
+                adj_loss = self.adjuster_loss(adj_all_cond, adj_c, adj_pr, real_image, adj_image)
             gradients_of_adj = adj_tape.gradient(adj_loss, adj_weight)
             self.adjuster_optimizer.apply_gradients(zip(gradients_of_adj, adj_weight))
 
-            return fake_image, adj_real_image, adj_fake_image, gen_loss, disc_loss, adj_loss
+            return fake_image, adj_image, gen_loss, disc_loss, adj_loss
 
-        return fake_image, None, None, gen_loss, disc_loss, None
+        return fake_image, None, gen_loss, disc_loss, None
 
     def interrupted(self, signum, f_name):
         self.model_checkpoint.save(path.join(self.args.result_dir, "checkpoint", "model", "interrupt"))
@@ -176,7 +173,7 @@ class EagerTrainer:
                     print("Skip one batch")
                     continue
                 result = self._train_step(b, real_image, real_cond)
-                losses = result[3:6]
+                losses = result[2:5]
                 global_step.assign_add(1)
                 with tf.contrib.summary.always_record_summaries():
                     tf.contrib.summary.scalar('loss/gen', losses[0])
@@ -194,10 +191,8 @@ class EagerTrainer:
                 if b % self.args.freq_gen is 0:
                     gen_image = result[0]
                     save_image(gen_image, path.join(self.args.result_dir, "train", "gen", "%d-%d.jpg" % (e, b)))
-
-                    if result[1] is not None and result[2] is not None:
-                        adj_image = tf.concat(result[1:3], 0)
-                        save_image(adj_image, path.join(self.args.result_dir, "train", "adj", "%d-%d.jpg" % (e, b)))
+                    if result[1] is not None:
+                        save_image(result[1], path.join(self.args.result_dir, "train", "adj", "%d-%d.jpg" % (e, b)))
                 if b % self.args.freq_test is 0:
                     self.predict(self.test_noise, self.test_cond, self.test_image,
                                  path.join(self.args.result_dir, "test", "gen", "%d-%d.jpg" % (e, b)),
