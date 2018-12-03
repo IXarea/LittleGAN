@@ -10,7 +10,7 @@ class Arg:
         parser = ArgumentParser(prog="LittleGAN", description="The code for paper: LittleGAN")
 
         parser.add_argument("mode", type=str, help="run mode", default="train",
-                            choices=["train", "plot", "visual", "random-sample", "evaluate", "condition-sample", "evaluate-sample"])
+                            choices=["train", "plot", "visual", "random-sample", "evaluate", "condition-sample", "evaluate-sample", "export-model"])
         parser.add_argument("exp_name", type=str, help="experience name")
         parser.add_argument("-e", "--env", type=str, help="config environment", default="sample")
         parser.add_argument("-g", "--gpu", type=str, required=False, help="gpu ids, eg: 0,1,2,3", default="-1")

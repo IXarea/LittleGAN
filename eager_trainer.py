@@ -210,7 +210,7 @@ class EagerTrainer:
         if not path.exists(self.args.test_data_dir):
             makedirs(self.args.result_dir)
         dirs = [".", "train/gen", "train/adj", "test/adj", "test/gen", "test/disc", "checkpoint", "log", "sample", "evaluate/gen", "evaluate/adj",
-                "evaluate/disc"]
+                "evaluate/disc", "model"]
         for item in dirs:
             if not path.exists(path.join(self.args.result_dir, item)):
                 makedirs(path.join(self.args.result_dir, item))
@@ -268,3 +268,7 @@ class EagerTrainer:
                 save_image(adj_image, adj_image_save_path)
 
         return gen_image, save, adj_real_image, adj_fake_image
+
+    def export_model_checkpoint(self):
+        model_checkpoint = tf.train.Checkpoint(discriminator=self.discriminator, generator=self.generator, adjuster=self.adjuster)
+        model_checkpoint.save(path.join(self.args.result_dir, "model", "model"))

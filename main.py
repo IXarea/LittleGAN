@@ -22,7 +22,7 @@ decoder = Decoder(args)
 encoder = Encoder(args)
 generator = Generator(args, decoder)
 discriminator = Discriminator(args, encoder)
-adjuster = Adjuster(args, encoder, decoder)
+adjuster = Adjuster(args, discriminator, generator)
 
 if args.mode == "train":
     repo = Repo(".")
@@ -118,6 +118,10 @@ elif args.mode == "condition-sample":
         # img2 = img[[x for x in range(7) if x % 7 in [0, 3, 4, 5]]]
         save_image(img, path.join(args.result_dir, "sample", "condition-gen-%d.jpg" % i), (1, 8))
         bar.add(1)
-
+elif args.mode == "export-model":
+    args.reuse = True
+    args.restore = True
+    model = EagerTrainer(args, generator, discriminator, adjuster, None)
+    model.export_model_checkpoint()
 else:
     print("没有此模式：", args.mode)

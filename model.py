@@ -101,34 +101,6 @@ class Generator(tf.keras.Model):
 
 
 class Adjuster(tf.keras.Model):
-    def __init__(self, args, encoder, decoder):
-        """
-        :param Arg args:
-        """
-        super(Adjuster, self).__init__()
-        self.args = args
-
-        self.encoder = encoder
-        self.dense = tf.layers.Dense(self.args.init_dim ** 2 * self.args.conv_filter[0])
-        self.norm = InstanceNormalization()
-        self.decoder = decoder
-        self.conv = tf.layers.Conv2DTranspose(self.args.image_channel, self.args.kernel_size, strides=(1, 1), padding="same", activation="tanh")
-
-    @tf.contrib.eager.defun
-    def call(self, inputs, training=None, mask=None):
-        image, cond = inputs
-        encoder_layers = self.encoder(image)
-        c = self.dense(cond)
-        c = tf.nn.leaky_relu(c, alpha=self.args.leaky_alpha)
-        c = self.norm(c)
-        c = tf.reshape(c, [-1, self.args.init_dim, self.args.init_dim, self.args.conv_filter[0]])
-        encoder_layers.reverse()
-        x = self.decoder([c, encoder_layers])
-        output_adj = self.conv(x)
-        return output_adj
-
-
-class Adjuster2(tf.keras.Model):
     def __init__(self, args, discriminator, generator):
         """
 
@@ -136,7 +108,7 @@ class Adjuster2(tf.keras.Model):
         :param Discriminator discriminator:
         :param Generator generator:
         """
-        super(Adjuster2, self).__init__()
+        super(Adjuster, self).__init__()
         self.args = args
 
         self.encoder = discriminator.encoder
