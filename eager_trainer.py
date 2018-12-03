@@ -1,7 +1,6 @@
 from os import path, makedirs
 from utils import save_image, soft
 import json
-import shutil
 import numpy as np
 from git import Repo
 import tensorflow as tf
@@ -35,9 +34,12 @@ class EagerTrainer:
         if path.isfile(path.join(self.args.result_dir, "checkpoint", "checkpoint")) and self.args.restore:
             print("Loading Checkpoint...")
             self.checkpoint.restore(tf.train.latest_checkpoint(path.join(self.args.result_dir, "checkpoint")))
-            with open(path.join(self.args.result_dir, "checkpoint", "status.json")) as f:
-                status = json.load(f)
-            self.global_epoch = status["epoch"]
+            if path.isfile(path.join(self.args.result_dir, "checkpoint", "status.json")):
+                with open(path.join(self.args.result_dir, "checkpoint", "status.json")) as f:
+                    status = json.load(f)
+                self.global_epoch = status["epoch"]
+            else:
+                self.global_epoch = 1
 
         self.writer = tf.contrib.summary.create_file_writer(path.join(self.args.result_dir, "log"))
         self.writer.set_as_default()
@@ -58,7 +60,6 @@ class EagerTrainer:
             "Discriminator": self.discriminator.weights,
             "Adjuster": [self.adjuster.weights[w] for w in range(16, 20)]
         }
-        self.global_epoch = 1
 
     def _init_graph(self):
         iterator, self.test_noise, self.test_cond, self.test_image = None, None, None, None
