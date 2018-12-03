@@ -31,6 +31,7 @@ class EagerTrainer:
         self.checkpoint = tf.train.Checkpoint(discriminator=self.discriminator, generator=self.generator, adjuster=self.adjuster,
                                               discriminator_optimizer=self.discriminator_optimizer, generator_optimizer=self.generator_optimizer,
                                               adjuster_optimizer=self.adjuster_optimizer)
+        self.global_epoch = 1
         if path.isfile(path.join(self.args.result_dir, "checkpoint", "checkpoint")) and self.args.restore:
             print("Loading Checkpoint...")
             self.checkpoint.restore(tf.train.latest_checkpoint(path.join(self.args.result_dir, "checkpoint")))
@@ -38,8 +39,6 @@ class EagerTrainer:
                 with open(path.join(self.args.result_dir, "checkpoint", "status.json")) as f:
                     status = json.load(f)
                 self.global_epoch = status["epoch"]
-            else:
-                self.global_epoch = 1
 
         self.writer = tf.contrib.summary.create_file_writer(path.join(self.args.result_dir, "log"))
         self.writer.set_as_default()
