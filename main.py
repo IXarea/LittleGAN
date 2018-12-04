@@ -62,7 +62,7 @@ elif args.mode == "evaluate-sample":
     model = EagerTrainer(args, generator, discriminator, adjuster, data)
     iterator = data.get_new_iterator()
     batches = np.ceil(args.evaluate_sample_size / args.batch_size).astype(int)
-    progress = tf.keras.utils.Progbar(args.evaluate_sample_batch * args.batch_size)
+    progress = tf.keras.utils.Progbar(batches)
     for b in range(batches):
         base_index = b * args.batch_size + 1
         image, cond = iterator.get_next()
