@@ -99,10 +99,11 @@ elif args.mode == "evaluate":
         print("Running: \"" + adj_cmd + "\"")
         system(adj_cmd)
 elif args.mode == "condition-sample":
+    args.reuse = True
     model = EagerTrainer(args, generator, discriminator, adjuster, None)
     bar = tf.keras.utils.Progbar(args.condition_sample_batch)
     for i in range(1, 1 + args.condition_sample_batch):
-        cond = soft(np.array([
+        cond = np.array([
             [0., 0., 0., 0., 0., 1., 0.],
             [0., 0., 0., 0., 0., 1., 1.],
             [0., 0., 0., 0., 0., 0., 1.],
@@ -111,7 +112,7 @@ elif args.mode == "condition-sample":
             [1., 0., 1., 0., 1., 0., 1.],
             [1., 1., 1., 0., 1., 0., 1.],
             [1., 1., 1., 1., 1., 0., 1.]
-        ])).astype(np.float32)
+        ]).astype(np.float32)
         noise = np.random.normal(size=[1, args.noise_dim])
         noise = np.repeat(noise, 8, 0).astype(np.float32)
         img = model.generator([noise, cond])

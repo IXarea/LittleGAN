@@ -173,6 +173,7 @@ class EagerTrainer:
                 except tf.errors.OutOfRangeError:
                     break
                 if real_cond.shape[0] != self.args.batch_size:
+                    progress_bar.add(self.args.batch_size)
                     print("Skip one batch")
                     continue
                 result = self._train_step(b, real_image, real_cond)
