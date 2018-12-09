@@ -49,6 +49,6 @@
   "restore": true,
   "reuse": false,
   "train_adj": true,
-  "prefetch": 320,
+  "prefetch_batch": 3,
   "threads": 8
 }

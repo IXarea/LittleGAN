@@ -36,5 +36,7 @@ class Arg:
         self.gpu = self.gpu.split(",")
         self.gpu = [int(item) for item in self.gpu if item.isnumeric() and int(item) >= 0]
 
+        self.prefetch = self.prefetch_batch * self.batch_size
+
     def __str__(self):
         return self.__dict__.__str__()
