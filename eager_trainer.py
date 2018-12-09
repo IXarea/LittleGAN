@@ -92,9 +92,10 @@ class EagerTrainer:
                + self.args.l1_lambda * tf.reduce_mean(tf.abs(image_ori - image_gen))
 
     def adjuster_loss(self, cond_ori, cond_disc, pr_disc, image_ori, image_adj):
-        return tf.reduce_mean(tf.keras.losses.binary_crossentropy(soft(tf.ones(pr_disc.shape)), pr_disc)) \
-               + tf.reduce_mean(tf.keras.losses.binary_crossentropy(cond_ori, cond_disc)) \
-               + self.args.l1_lambda * tf.reduce_mean(tf.abs(tf.concat([image_ori] * 2, axis=0) - image_adj))
+        gan_loss = tf.reduce_mean(tf.keras.losses.binary_crossentropy(soft(tf.ones(pr_disc.shape)), pr_disc))
+        cond_loss = tf.reduce_mean(tf.keras.losses.binary_crossentropy(cond_ori, cond_disc))
+        l1_loss = self.args.l1_lambda * tf.reduce_mean(tf.abs(image_ori - image_adj))
+        return gan_loss + cond_loss + l1_loss
 
     def _get_train_weight(self, model, batch_no):
         name = model.__class__.__name__
@@ -107,43 +108,58 @@ class EagerTrainer:
         else:
             return self.all_weights[name]
 
-    def _train_step(self, batch_no, real_image, real_cond):
+    def _train_step(self, batch_no, iterator):
+        try:
+            real_image_1, real_cond_1 = iterator.get_next()
+            real_image_2, real_cond_2 = iterator.get_next()
+        except tf.errors.OutOfRangeError:
+            return None,
+        if not real_cond_1.shape[0] == real_cond_2.shape[0] == self.args.batch_size:
+            return False,
+
         # Todo: why use uniform distribution as noise will cause mode collapse
         noise = tf.random_normal([self.args.batch_size, self.args.noise_dim])
+
+        new_image = tf.image.random_flip_left_right(real_image_1)
+        new_image = tf.image.random_brightness(new_image, 0.02)
+        new_image = tf.image.random_contrast(new_image, 0.75, 1.003)
+        new_image = tf.image.random_hue(new_image, 0.03, -0.03)
+        new_image = new_image + 0.1 * tf.random_normal(new_image.shape, 0, 0.2)
+
         with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
-            fake_image = self.generator([noise, real_cond])
-            real_pr, real_c = self.discriminator(real_image)
+            fake_image = self.generator([noise, real_cond_2])
+
+            real_pr, real_c = self.discriminator(new_image)
             fake_pr, fake_c = self.discriminator(fake_image)
 
-            disc_loss = self.discriminator_loss(real_cond, real_c, real_pr, fake_pr)
-            gen_loss = self.generator_loss(real_cond, fake_c, fake_pr, real_image, fake_image)
+            disc_loss = self.discriminator_loss(real_cond_1, real_c, real_pr, fake_pr)
+            gen_loss = self.generator_loss(real_cond_2, fake_c, fake_pr, real_image_2, fake_image)
             if self.args.use_gp:
-                # todo: Is gp must use on cross-entropy
                 # todo: explore how to gp on eager mode
                 raise NotImplementedError("GP didn't implemented on eager mode")
 
-        gradients_of_gen = gen_tape.gradient(gen_loss, self._get_train_weight(self.generator, batch_no))
         gradients_of_disc = disc_tape.gradient(disc_loss, self._get_train_weight(self.discriminator, batch_no))
-
         if self.args.use_clip:
             gradients_of_disc = [tf.clip_by_value(x, -self.args.clip_range, self.args.clip_range) for x in gradients_of_disc]
+        gradients_of_gen = gen_tape.gradient(gen_loss, self._get_train_weight(self.generator, batch_no))
 
-        self.generator_optimizer.apply_gradients(zip(gradients_of_gen, self._get_train_weight(self.generator, batch_no)))
-        self.discriminator_optimizer.apply_gradients(zip(gradients_of_disc, self._get_train_weight(self.discriminator, batch_no)))
-        if self.args.train_adj:
+        adj_image, adj_loss = None, None
+        if self.args.train_adj and batch_no > 10:
             adj_weight = self._get_train_weight(self.adjuster, batch_no)
-
+            # todo: why input 0~1
+            adj_input_cond = (tf.concat([real_cond_2, real_cond_1], axis=0) + 1) * 0.5
+            adj_target_cond = tf.concat([real_cond_2, real_cond_1], axis=0)
+            adj_input_image = tf.concat([real_image_1, fake_image], axis=0)
+            adj_target_image = tf.concat([real_image_2, real_image_1], axis=0)
             with tf.GradientTape() as adj_tape:
-                adj_all_cond = tf.concat([real_cond] * 2, axis=0)
-                adj_image = self.adjuster([tf.concat([real_image, fake_image], axis=0), adj_all_cond])
+                adj_image = self.adjuster([adj_input_image, adj_input_cond])
                 adj_pr, adj_c = self.discriminator(adj_image)
-                adj_loss = self.adjuster_loss(adj_all_cond, adj_c, adj_pr, real_image, adj_image)
+                adj_loss = self.adjuster_loss(adj_target_cond, adj_c, adj_pr, adj_target_image, adj_image)
             gradients_of_adj = adj_tape.gradient(adj_loss, adj_weight)
             self.adjuster_optimizer.apply_gradients(zip(gradients_of_adj, adj_weight))
-
-            return fake_image, adj_image, gen_loss, disc_loss, adj_loss
-
-        return fake_image, None, gen_loss, disc_loss, None
+        self.discriminator_optimizer.apply_gradients(zip(gradients_of_disc, self._get_train_weight(self.discriminator, batch_no)))
+        self.generator_optimizer.apply_gradients(zip(gradients_of_gen, self._get_train_weight(self.generator, batch_no)))
+        return True, fake_image, adj_image, gen_loss, disc_loss, adj_loss
 
     def _interrupted(self, signum, f_name):
         self.checkpoint.save(path.join(self.args.result_dir, "checkpoint", "interrupt"))
@@ -168,16 +184,13 @@ class EagerTrainer:
             progress_bar = tf.keras.utils.Progbar(self.dataset.batches * self.args.batch_size)
             start_time = time.time()
             for b in range(1, self.dataset.batches + 1):
-                try:
-                    real_image, real_cond = iterator.get_next()
-                except tf.errors.OutOfRangeError:
+                result = self._train_step(b, iterator)
+                if None is result[0]:
                     break
-                if real_cond.shape[0] != self.args.batch_size:
-                    progress_bar.add(self.args.batch_size)
-                    print("Skip one batch")
+                elif not result[0]:
                     continue
-                result = self._train_step(b, real_image, real_cond)
-                losses = result[2:5]
+
+                losses = result[3:6]
                 global_step.assign_add(1)
                 with tf.contrib.summary.always_record_summaries():
                     tf.contrib.summary.scalar('loss/gen', losses[0])
@@ -193,10 +206,10 @@ class EagerTrainer:
 
                 # 输出训练生成图像
                 if b % self.args.freq_gen is 0:
-                    gen_image = result[0]
+                    gen_image = result[1]
                     save_image(gen_image, path.join(self.args.result_dir, "train", "gen", "%d-%d.jpg" % (e, b)))
-                    if result[1] is not None:
-                        save_image(result[1], path.join(self.args.result_dir, "train", "adj", "%d-%d.jpg" % (e, b)))
+                    if result[2] is not None:
+                        save_image(result[2], path.join(self.args.result_dir, "train", "adj", "%d-%d.jpg" % (e, b)))
                 if b % self.args.freq_test is 0:
                     self.predict(self.test_noise, self.test_cond, self.test_image,
                                  path.join(self.args.result_dir, "test", "gen", "%d-%d.jpg" % (e, b)),
@@ -204,7 +217,7 @@ class EagerTrainer:
                                  path.join(self.args.result_dir, "test", "adj", "%d-%d.jpg" % (e, b))
                                  )
             end_time = time.time()
-            print("Time usage:", start_time - end_time, "s")
+            print("Time usage:", end_time - start_time, "s")
             self.checkpoint.save(path.join(self.args.result_dir, "checkpoint", str(e)))
 
     def _init_dir(self):
