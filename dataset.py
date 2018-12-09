@@ -29,11 +29,6 @@ class CelebA:
         image = tf.cast(image, tf.float32)
         image = data_rescale(image)
 
-        image = tf.image.random_flip_left_right(image)
-        image = tf.image.random_brightness(image, 0.02)
-        image = tf.image.random_contrast(image, 0.75, 1.003)
-        image = tf.image.random_hue(image, 0.03, -0.03)
-        image = image + 0.1 * tf.random_normal(image.shape, 0, 0.2)
         return image, soft(tf.string_to_number(label))
 
     @staticmethod
