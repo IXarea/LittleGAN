@@ -127,6 +127,6 @@ class Adjuster(tf.keras.Model):
         c = tf.reshape(c, [-1, self.args.init_dim, self.args.init_dim, self.args.conv_filter[0]])
         c = c
         encoder_layers.reverse()
-        x = self.decoder([c, 0.5 * encoder_layers])
+        x = self.decoder([c, encoder_layers])
         output_adj = self.conv(x)
         return output_adj
