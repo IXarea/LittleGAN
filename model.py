@@ -40,7 +40,7 @@ class Decoder(tf.keras.Model):
         x, add = inputs
         for i in range(1, 5):
             if add[i - 1] is not None:
-                x = tf.add(x, add[i - 1])
+                x = 0.5 * tf.add(x, add[i - 1])
             x = self.__getattribute__("conv" + str(i))(x)
             x = self.__getattribute__("norm" + str(i))(x)
             x = tf.nn.leaky_relu(x, self.args.leaky_alpha)
@@ -125,7 +125,8 @@ class Adjuster(tf.keras.Model):
         c = tf.nn.leaky_relu(c, alpha=self.args.leaky_alpha)
         c = self.norm(c)
         c = tf.reshape(c, [-1, self.args.init_dim, self.args.init_dim, self.args.conv_filter[0]])
+        c = c
         encoder_layers.reverse()
-        x = self.decoder([c, encoder_layers])
+        x = self.decoder([c, 0.5 * encoder_layers])
         output_adj = self.conv(x)
         return output_adj
