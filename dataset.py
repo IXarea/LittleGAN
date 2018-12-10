@@ -1,12 +1,14 @@
 import tensorflow as tf
 from glob import glob
 from utils import soft, data_rescale
+from os import path
 
 
 class CelebA:
     def __init__(self, args):
+        print(" - Initializing Dataset...")
         self.args = args
-        self._image_list = glob(args.image_path + "/*." + args.image_ext)
+        self._image_list = glob(path.join(args.image_path, "*." + args.image_ext))
         self._attributes_list = self._get_attr_list(args.attr_path, args.attr)
         self.batches = len(self._image_list) // args.batch_size
         self.all_label = ["有短髭", "柳叶眉", "有魅力", "有眼袋", "秃头", "有刘海", "大嘴唇", "大鼻子", "黑发", "金发", "睡眼惺松", "棕发", "浓眉",
@@ -15,16 +17,18 @@ class CelebA:
                           "年轻人"]
         self.label = [self.all_label[x] for x in args.attr]
         dataset = tf.data.Dataset.from_tensor_slices((self._image_list, self._attributes_list))
-        dataset = dataset.apply(tf.data.experimental.map_and_batch(map_func=self._parse, batch_size=args.batch_size, num_parallel_calls=4))
+        dataset = dataset.apply(tf.data.experimental.map_and_batch(map_func=self._parse, batch_size=args.batch_size, num_parallel_calls=args.threads))
         dataset = dataset.shuffle(buffer_size=self.args.prefetch)
         self.dataset = dataset.prefetch(buffer_size=self.args.prefetch)
 
     def _parse(self, filename, label):
         image = tf.read_file(filename)
         image = tf.image.decode_image(image, self.args.image_channel)
+
         image.set_shape([self.args.image_dim, self.args.image_dim, self.args.image_channel])
         image = tf.cast(image, tf.float32)
         image = data_rescale(image)
+
         return image, soft(tf.string_to_number(label))
 
     @staticmethod
