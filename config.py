@@ -29,7 +29,7 @@ class Arg:
         for item in args.__dict__:
             self.__setattr__(item, getattr(args, item))
 
-        self.cond_dim = len(self.attr)
+        self.cond_dim = 40 if self.attr is None else len(self.attr)
         self.result_dir = os.path.join(self.all_result_dir, args.exp_name)
 
         os.environ["CUDA_VISIBLE_DEVICES"] = self.gpu

@@ -11,11 +11,11 @@ class CelebA:
         self._image_list = glob(path.join(args.image_path, "*." + args.image_ext))
         self._attributes_list = self._get_attr_list(args.attr_path, args.attr)
         self.batches = len(self._image_list) // args.batch_size
-        self.all_label = ["有短髭", "柳叶眉", "有魅力", "有眼袋", "秃头", "有刘海", "大嘴唇", "大鼻子", "黑发", "金发", "睡眼惺松", "棕发", "浓眉",
-                          "丰满", "双下巴", "眼镜", "山羊胡", "白发", "浓妆", "高颧骨", "男性", "嘴轻微张开", "八字胡", "眯缝眼", "完全没有胡子", "鹅蛋脸",
-                          "白皮肤", "尖鼻子", "发际线高的", "脸红的", "有鬓脚", "微笑", "直发", "卷发", "戴耳环", "戴帽子", "涂口红", "戴项链", "戴领带",
-                          "年轻人"]
-        self.label = [self.all_label[x] for x in args.attr]
+        self.all_label = ["有短髭", "柳叶眉", "有魅力", "有眼袋", "秃头", "有刘海", "大嘴唇", "大鼻子", "黑发", "金发",
+                          "睡眼惺松", "棕发", "浓眉", "丰满", "双下巴", "眼镜", "山羊胡", "白发", "浓妆", "高颧骨",
+                          "男性", "嘴轻微张开", "八字胡", "眯缝眼", "完全没有胡子", "鹅蛋脸", "白皮肤", "尖鼻子", "发际线高的", "脸红的",
+                          "有鬓脚", "微笑", "直发", "卷发", "戴耳环", "戴帽子", "涂口红", "戴项链", "戴领带", "年轻人"]
+        self.label = self.all_label if args.attr is None else [self.all_label[x] for x in args.attr]
         dataset = tf.data.Dataset.from_tensor_slices((self._image_list, self._attributes_list))
         dataset = dataset.apply(tf.data.experimental.map_and_batch(map_func=self._parse, batch_size=args.batch_size, num_parallel_calls=args.threads))
         dataset = dataset.shuffle(buffer_size=self.args.prefetch)
