@@ -186,6 +186,7 @@ class EagerTrainer:
             for b in range(1, self.dataset.batches + 1):
                 result = self._train_step(b, iterator)
                 if None is result[0]:
+                    progress_bar.add(self.args.batch_size*2)
                     break
                 elif not result[0]:
                     continue
@@ -202,7 +203,7 @@ class EagerTrainer:
                 for label, loss in zip(loss_label, losses):
                     if loss is not None:
                         progress_add.append((label, loss))
-                progress_bar.add(self.args.batch_size, progress_add)
+                progress_bar.add(self.args.batch_size*2, progress_add)
 
                 # 输出训练生成图像
                 if b % self.args.freq_gen is 0:
