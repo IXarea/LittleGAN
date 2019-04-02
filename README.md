@@ -6,4 +6,4 @@
 - We use the dataset "CelebA" to train model. please download it first from http://mmlab.ie.cuhk.edu.hk/projects/CelebA.html
 - Please crop the images to 128*128. We recommend to use this project [HD-CelebA-Cropper](https://github.com/LynnHo/HD-CelebA-Cropper).
 - If you wanna more data or information about this project, please contact us.
-- There is a demo: [LittleGAN Live](https://live.ixarea.com) [Source Code](https://github.com/ixarea.com/littlegan-live)
+- There is a demo: [LittleGAN Live](https://live.ixarea.com) and [Source Code](https://github.com/ixarea/littlegan-live)
