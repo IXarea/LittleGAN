@@ -1,18 +1,17 @@
 from config import Arg
-
 args = Arg()
-import tensorflow as tf
 
-tf.enable_eager_execution()
-
-from os import path, system
-from dataset import CelebA
-from utils import save_image, soft
-from model import Adjuster, Discriminator, Decoder, Encoder, Generator
-from eager_trainer import EagerTrainer
+from os import path, system, environ
 from git import Repo
 import time
 import numpy as np
+import tensorflow as tf
+tf.compat.v1.enable_eager_execution()
+
+from dataset import CelebA
+from utils import save_image
+from model import Adjuster, Discriminator, Decoder, Encoder, Generator
+from eager_trainer import EagerTrainer
 
 print("Application Params: ", args)
 print("Using GPU(s): ", args.gpu)
@@ -54,7 +53,8 @@ elif args.mode == "random-sample":
                       path.join(args.result_dir, "sample", "discriminator-%s-%d.json" % (now_time, b)),
                       path.join(args.result_dir, "sample", "adjuster-%s-%d.jpg" % (now_time, b))
                       )
-        np.savez_compressed(path.join(args.result_dir, "sample", "input_data-%s-%d.npz" % (now_time, b)), n=noise, c=cond, i=image)
+        np.savez_compressed(path.join(args.result_dir, "sample", "input_data-%s-%d.npz" % (now_time, b)), n=noise,
+                            c=cond, i=image)
 elif args.mode == "evaluate-sample":
     args.reuse = True
     data = CelebA(args)
@@ -68,12 +68,16 @@ elif args.mode == "evaluate-sample":
         image, cond = iterator.get_next()
         noise = tf.random_normal([cond.shape[0], args.noise_dim])
         gen_image, save, adj_real_image, adj_fake_image = model.predict(noise, cond, image,
-                                                                        None, path.join(args.result_dir, "evaluate", "disc", str(b) + ".json"), None)
+                                                                        None,
+                                                                        path.join(args.result_dir, "evaluate", "disc",
+                                                                                  str(b) + ".json"), None)
         for i in range(args.batch_size):
             save_image(gen_image[i], path.join(args.result_dir, "evaluate", "gen", str(base_index + i) + ".jpg"))
             if adj_real_image is not None and adj_fake_image is not None:
-                save_image(adj_real_image[i], path.join(args.result_dir, "evaluate", "adj", "real_" + str(base_index + i) + ".jpg"))
-                save_image(adj_fake_image[i], path.join(args.result_dir, "evaluate", "adj", "fake_" + str(base_index + i) + ".jpg"))
+                save_image(adj_real_image[i],
+                           path.join(args.result_dir, "evaluate", "adj", "real_" + str(base_index + i) + ".jpg"))
+                save_image(adj_fake_image[i],
+                           path.join(args.result_dir, "evaluate", "adj", "fake_" + str(base_index + i) + ".jpg"))
         progress.add(1)
 elif args.mode == "evaluate":
     if not args.gpu:
