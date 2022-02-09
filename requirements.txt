@@ -1,5 +1,5 @@
 scipy
-tensorflow-gpu==1.15.4
+tensorflow-gpu==2.5.3
 Pillow
 GitPython
 pydot
